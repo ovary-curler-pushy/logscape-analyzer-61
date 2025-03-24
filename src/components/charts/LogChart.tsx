@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { toast } from "sonner";
-import { FileText, Wand, RefreshCcw } from "lucide-react";
+import { FileText, Wand, RefreshCcw, ZoomIn } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import VictoryChartDisplay from "./chart-components/VictoryChartDisplay";
 import { LogChartProps } from '@/types/chartTypes';
 import { processLogDataInChunks } from '@/utils/logProcessing';
@@ -20,12 +21,16 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
+  const [zoomDomain, setZoomDomain] = useState<any>(null);
 
   // Process log data when inputs change
   useEffect(() => {
     if (!logContent || patterns.length === 0) return;
 
     setIsProcessing(true);
+    setChartData([]);
+    setPanels([]);
+    
     processLogDataInChunks(
       logContent,
       patterns,
@@ -45,34 +50,69 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   const formatDataCallback = useCallback((data: any[]) => {
     if (!data.length) {
       setIsProcessing(false);
+      toast.error("No data points found matching the patterns");
       return;
     }
 
     try {
       // Sort data by timestamp
-      const sortedData = [...data].sort((a, b) => 
-        a.timestamp.getTime() - b.timestamp.getTime()
-      );
+      const sortedData = [...data].sort((a, b) => {
+        const aTime = a.timestamp instanceof Date ? a.timestamp.getTime() : new Date(a.timestamp).getTime();
+        const bTime = b.timestamp instanceof Date ? b.timestamp.getTime() : new Date(b.timestamp).getTime();
+        return aTime - bTime;
+      });
+
+      console.log("Total data points:", sortedData.length);
+
+      // Process data to flattened format for chart
+      const processedData = sortedData.map(item => {
+        const result: any = {
+          timestamp: item.timestamp instanceof Date ? item.timestamp : new Date(item.timestamp)
+        };
+        
+        // Flatten values from the values object
+        Object.entries(item.values || {}).forEach(([key, value]) => {
+          if (typeof value === 'number') {
+            result[key] = value;
+          } else if (typeof value === 'string') {
+            // Try to convert to number if possible
+            const numValue = parseFloat(value as string);
+            if (!isNaN(numValue)) {
+              result[key] = numValue;
+              result[`${key}_original`] = value; // Keep original string value
+            } else {
+              // For string values, we'll try to map them to numbers for charting
+              result[key] = 1; // Default value for string appearance
+              result[`${key}_original`] = value; // Keep original string value
+            }
+          }
+        });
+        
+        return result;
+      });
 
       // Create panels based on data points count
-      const totalPanels = Math.ceil(sortedData.length / POINTS_PER_PANEL);
+      const totalPanels = Math.ceil(processedData.length / POINTS_PER_PANEL);
       const newPanels = Array.from({ length: totalPanels }, (_, index) => {
         const start = index * POINTS_PER_PANEL;
-        const end = Math.min((index + 1) * POINTS_PER_PANEL, sortedData.length);
+        const end = Math.min((index + 1) * POINTS_PER_PANEL, processedData.length);
         return {
           id: index.toString(),
-          data: sortedData.slice(start, end),
+          data: processedData.slice(start, end),
           range: {
-            start: new Date(sortedData[start].timestamp),
-            end: new Date(sortedData[end - 1].timestamp)
+            start: new Date(processedData[start].timestamp),
+            end: new Date(processedData[end - 1].timestamp)
           }
         };
       });
 
+      console.log(`Created ${newPanels.length} panels with ${POINTS_PER_PANEL} points each`);
+      console.log("First panel data points:", newPanels[0]?.data?.length);
+      console.log("First data point in first panel:", newPanels[0]?.data?.[0]);
+      
       setPanels(newPanels);
       setActivePanel("0");
       
-      console.log(`Created ${newPanels.length} panels with ${POINTS_PER_PANEL} points each`);
       toast.success(`Data divided into ${newPanels.length} panels`);
     } catch (error) {
       console.error('Error formatting data:', error);
@@ -84,6 +124,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
 
   // Handle zoom domain changes
   const handleZoomDomainChange = useCallback((domain: any) => {
+    setZoomDomain(domain);
     console.log('Zoom domain changed:', domain);
   }, []);
 
@@ -91,6 +132,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   const handleChartTypeChange = useCallback((type: 'line' | 'bar') => {
     setChartType(type);
     toast.info(`Switched to ${type} chart view`);
+  }, []);
+
+  // Reset zoom to default
+  const handleResetZoom = useCallback(() => {
+    setZoomDomain(null);
+    toast.info("Zoom reset to default view");
   }, []);
 
   return (
@@ -117,6 +164,16 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
             <Button
               variant="outline"
               size="sm"
+              onClick={handleResetZoom}
+              disabled={!zoomDomain}
+            >
+              <ZoomIn className="h-4 w-4 mr-1" />
+              Reset Zoom
+            </Button>
+
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => handleChartTypeChange(chartType === 'line' ? 'bar' : 'line')}
             >
               {chartType === 'line' ? 'Switch to Bar' : 'Switch to Line'}
@@ -128,13 +185,15 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       <CardContent>
         {panels.length > 0 ? (
           <Tabs value={activePanel} onValueChange={setActivePanel}>
-            <TabsList className="mb-4">
-              {panels.map((panel) => (
-                <TabsTrigger key={panel.id} value={panel.id}>
-                  Panel {parseInt(panel.id) + 1}
-                </TabsTrigger>
-              ))}
-            </TabsList>
+            <ScrollArea className="max-w-full mb-4">
+              <TabsList className="mb-4 flex-wrap">
+                {panels.map((panel) => (
+                  <TabsTrigger key={panel.id} value={panel.id}>
+                    Panel {parseInt(panel.id) + 1}
+                  </TabsTrigger>
+                ))}
+              </TabsList>
+            </ScrollArea>
 
             {panels.map((panel) => (
               <TabsContent key={panel.id} value={panel.id}>
@@ -146,6 +205,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
                 />
                 <div className="mt-2 text-xs text-muted-foreground">
                   Time range: {panel.range.start.toLocaleString()} - {panel.range.end.toLocaleString()}
+                  {panel.data && ` | ${panel.data.length} data points`}
                 </div>
               </TabsContent>
             ))}

@@ -4,13 +4,12 @@ import {
   VictoryChart,
   VictoryLine,
   VictoryBar,
-  VictoryZoomContainer,
   VictoryAxis,
   VictoryTooltip,
-  VictoryVoronoiContainer,
   VictoryLegend,
   VictoryScatter,
-  createContainer
+  VictoryZoomContainer,
+  VictoryVoronoiContainer
 } from 'victory';
 import { ChartDisplayProps } from '@/types/chartTypes';
 import { format } from 'date-fns';
@@ -30,7 +29,33 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
     }
   };
 
-  const VictoryZoomVoronoiContainer = createContainer("zoom", "voronoi");
+  // Sample data to reduce the number of points displayed
+  const sampleChartData = () => {
+    if (!visibleChartData || visibleChartData.length === 0) return [];
+    
+    const maxPoints = 500; // Maximum points to display for better performance
+    
+    if (visibleChartData.length <= maxPoints) return visibleChartData;
+    
+    const samplingRate = Math.ceil(visibleChartData.length / maxPoints);
+    return visibleChartData.filter((_, index) => index % samplingRate === 0);
+  };
+
+  const sampledData = sampleChartData();
+  
+  // Debug data display issues
+  console.log("Chart data points:", visibleChartData?.length);
+  console.log("Signals:", signals);
+  console.log("First data point:", visibleChartData?.[0]);
+  console.log("Sampled data points:", sampledData?.length);
+
+  if (!sampledData || sampledData.length === 0) {
+    return (
+      <div className="flex h-[300px] w-full bg-card items-center justify-center text-muted-foreground">
+        No data available for this panel
+      </div>
+    );
+  }
 
   return (
     <div className="relative h-[300px] w-full bg-card">
@@ -39,15 +64,12 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
         height={300}
         scale={{ x: "time" }}
         containerComponent={
-          <VictoryZoomVoronoiContainer
+          <VictoryZoomContainer
             zoomDimension="x"
             zoomDomain={zoomDomain}
             onZoomDomainChange={handleZoomDomainChange}
-            labels={({ datum }) => {
-              const timestamp = format(new Date(datum.timestamp), 'MMM dd, HH:mm:ss');
-              const value = datum._original || datum.y;
-              return `${timestamp}\n${datum.seriesName}: ${value}`;
-            }}
+            allowZoom={true}
+            minimumZoom={{x: 1/100000}}
           />
         }
       >
@@ -69,7 +91,7 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
         />
         
         {signals.map((signal) => {
-          const data = visibleChartData.map(point => ({
+          const data = sampledData.map(point => ({
             timestamp: point.timestamp,
             y: point[signal.name],
             _original: point[`${signal.name}_original`],

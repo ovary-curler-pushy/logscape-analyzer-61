@@ -1,3 +1,4 @@
+
 import { toast } from "sonner";
 import { RegexPattern } from "@/components/regex/RegexManager";
 import { LogData, Signal, CHART_COLORS, DataTimeRange, TimeSegment } from "@/types/chartTypes";
@@ -23,7 +24,6 @@ export const processLogDataInChunks = (
   
   // Clear previous data
   setChartData([]);
-  setFormattedChartData([]);
   
   // Create signals for each pattern
   const newSignals: Signal[] = regexPatterns.map((pattern, index) => ({
@@ -35,7 +35,6 @@ export const processLogDataInChunks = (
   }));
   
   setSignals(newSignals);
-  setPanels([{ id: 'panel-1', signals: newSignals.map(s => s.id) }]);
   
   console.log(`Processing ${totalLines} lines in ${chunks} chunks of ${CHUNK_SIZE}`);
   
@@ -154,16 +153,17 @@ export const processLogDataInChunks = (
     parsedData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     
     console.log("Processing completed, found", parsedData.length, "data points");
+    console.log("Sample data point:", parsedData[0]);
     
-    // Pass the data directly to the callback
-    formatDataCallback(parsedData);
+    if (formatDataCallback) {
+      formatDataCallback(parsedData);
+    }
   };
 
   // Start processing
   processChunk();
 };
 
-// Remove unused time-based segmentation functions since we're now using point-based segmentation
 export const extractDataForTimeRange = (data: any[], range: { start: Date, end: Date }): any[] => {
   if (!data || data.length === 0) return [];
   
