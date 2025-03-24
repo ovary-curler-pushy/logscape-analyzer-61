@@ -33,7 +33,7 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
   const sampleChartData = () => {
     if (!visibleChartData || visibleChartData.length === 0) return [];
     
-    const maxPoints = 500; // Maximum points to display for better performance
+    const maxPoints = 1000; // Increased maximum points for more detailed visualization
     
     if (visibleChartData.length <= maxPoints) return visibleChartData;
     
@@ -64,17 +64,28 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
         height={300}
         scale={{ x: "time" }}
         containerComponent={
-          <VictoryZoomContainer
-            zoomDimension="x"
-            zoomDomain={zoomDomain}
-            onZoomDomainChange={handleZoomDomainChange}
-            allowZoom={true}
-            minimumZoom={{x: 1/100000}}
+          <VictoryVoronoiContainer
+            labelComponent={
+              <VictoryTooltip
+                flyoutStyle={{ fill: "white", stroke: "#64748b" }}
+                style={{ fontSize: 10 }}
+              />
+            }
+            voronoiDimension="x"
+            labels={({ datum }) => {
+              return `${datum.seriesName}: ${datum._original || datum.y}`;
+            }}
           />
         }
       >
         <VictoryAxis
-          tickFormat={(timestamp) => format(new Date(timestamp), 'HH:mm')}
+          tickFormat={(timestamp) => {
+            try {
+              return format(new Date(timestamp), 'HH:mm:ss');
+            } catch (e) {
+              return '';
+            }
+          }}
           style={{
             axis: { stroke: "#64748b" },
             tickLabels: { fill: "#64748b", fontSize: 10 },
@@ -106,7 +117,7 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
                   x="timestamp"
                   y="y"
                   style={{
-                    data: { stroke: signal.color }
+                    data: { stroke: signal.color, strokeWidth: 2 }
                   }}
                 />
                 <VictoryScatter

@@ -14,7 +14,7 @@ const POINTS_PER_PANEL = 5000;
 
 const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) => {
   // Basic states
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [rawChartData, setRawChartData] = useState<any[]>([]);
   const [signals, setSignals] = useState<any[]>([]);
   const [panels, setPanels] = useState<any[]>([]);
   const [activePanel, setActivePanel] = useState<string>("0");
@@ -28,13 +28,13 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     if (!logContent || patterns.length === 0) return;
 
     setIsProcessing(true);
-    setChartData([]);
+    setRawChartData([]);
     setPanels([]);
     
     processLogDataInChunks(
       logContent,
       patterns,
-      setChartData,
+      setRawChartData,
       () => {},  // Removed formatted chart data setter
       setSignals,
       () => {},  // Removed panels setter
@@ -67,7 +67,9 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       // Process data to flattened format for chart
       const processedData = sortedData.map(item => {
         const result: any = {
-          timestamp: item.timestamp instanceof Date ? item.timestamp : new Date(item.timestamp)
+          timestamp: item.timestamp instanceof Date 
+            ? item.timestamp.getTime() // Convert Date object to number for Victory
+            : new Date(item.timestamp).getTime() // Convert string date to number
         };
         
         // Flatten values from the values object
@@ -185,15 +187,15 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       <CardContent>
         {panels.length > 0 ? (
           <Tabs value={activePanel} onValueChange={setActivePanel}>
-            <ScrollArea className="max-w-full mb-4">
-              <TabsList className="mb-4 flex-wrap">
+            <div className="mb-4 overflow-x-auto">
+              <TabsList className="inline-flex flex-wrap h-auto py-2">
                 {panels.map((panel) => (
-                  <TabsTrigger key={panel.id} value={panel.id}>
+                  <TabsTrigger key={panel.id} value={panel.id} className="text-xs h-auto py-1.5 px-2.5">
                     Panel {parseInt(panel.id) + 1}
                   </TabsTrigger>
                 ))}
               </TabsList>
-            </ScrollArea>
+            </div>
 
             {panels.map((panel) => (
               <TabsContent key={panel.id} value={panel.id}>
