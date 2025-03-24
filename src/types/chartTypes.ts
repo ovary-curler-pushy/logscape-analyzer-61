@@ -1,4 +1,3 @@
-
 import { RegexPattern } from "@/components/regex/RegexManager";
 
 export interface LogData {
@@ -70,12 +69,13 @@ export interface PanelTabsManagerProps {
 }
 
 export interface ChartDisplayProps {
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef?: React.RefObject<HTMLDivElement>;
   chartType: 'line' | 'bar';
   visibleChartData: any[];
-  zoomDomain: { start?: number; end?: number };
+  zoomDomain?: { start?: number; end?: number };
   signals: Signal[];
-  onBrushChange: (brushData: any) => void;
+  onZoomDomainChange?: (domain: any) => void;
+  onBrushChange?: (brushData: any) => void;
 }
 
 export interface LogSampleProps {
