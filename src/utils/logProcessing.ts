@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { RegexPattern } from "@/components/regex/RegexManager";
 import { LogData, Signal, CHART_COLORS, DataTimeRange, TimeSegment } from "@/types/chartTypes";
@@ -178,14 +177,19 @@ export const processLogDataInChunks = (
         
         // Set time range for data selection
         if (minTime && maxTime) {
+          const selectedEnd = new Date(Math.min(minTime.getTime() + (15 * 60 * 1000), maxTime.getTime()));
+          
           setDataTimeRange({
             min: minTime,
             max: maxTime,
             selected: {
               start: minTime,
-              end: new Date(Math.min(minTime.getTime() + (15 * 60 * 1000), maxTime.getTime()))
+              end: selectedEnd
             }
           });
+          
+          console.log(`Setting time range: ${minTime.toISOString()} - ${maxTime.toISOString()}`);
+          console.log(`Default selection: ${minTime.toISOString()} - ${selectedEnd.toISOString()}`);
         }
         
         toast.success(`Found ${parsedData.length.toLocaleString()} data points with the selected patterns`);
@@ -382,12 +386,17 @@ const retryWithSmallerBatch = (
   setTimeout(processBatch, 0);
 };
 
-// New function to segment data into time periods
+// New function to segment data into time periods with improved reliability
 export const segmentDataByTime = (
   data: any[],
   segmentMinutes: number = 15
 ): TimeSegment[] => {
-  if (!data || data.length === 0) return [];
+  if (!data || data.length === 0) {
+    console.log("No data to segment");
+    return [];
+  }
+  
+  console.log(`Segmenting ${data.length} data points into ${segmentMinutes}-minute intervals`);
   
   // Sort data by timestamp if not already sorted
   const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
@@ -395,45 +404,61 @@ export const segmentDataByTime = (
   const segments: TimeSegment[] = [];
   const segmentMs = segmentMinutes * 60 * 1000;
   
-  let currentSegmentStart = sortedData[0].timestamp;
-  let currentSegmentEnd = currentSegmentStart + segmentMs;
-  let currentSegmentData = [];
+  // Find earliest timestamp
+  const firstTimestamp = sortedData[0].timestamp;
   
+  // Calculate segment start times based on fixed intervals from the first timestamp
+  // This ensures segments are aligned properly
+  const startTime = Math.floor(firstTimestamp / segmentMs) * segmentMs;
+  
+  // Create a map of segment start times to arrays of data points
+  const segmentMap = new Map<number, any[]>();
+  
+  // Distribute data points to the correct segments
   for (const point of sortedData) {
-    if (point.timestamp <= currentSegmentEnd) {
-      currentSegmentData.push(point);
-    } else {
-      // Create segment with accumulated data
-      if (currentSegmentData.length > 0) {
-        segments.push({
-          startTime: new Date(currentSegmentStart),
-          endTime: new Date(currentSegmentEnd),
-          data: currentSegmentData,
-          id: `segment-${segments.length + 1}`
-        });
-      }
-      
-      // Start new segment
-      currentSegmentStart = Math.floor(point.timestamp / segmentMs) * segmentMs;
-      currentSegmentEnd = currentSegmentStart + segmentMs;
-      currentSegmentData = [point];
+    // Calculate which segment this point belongs to
+    const pointSegmentStart = startTime + (Math.floor((point.timestamp - startTime) / segmentMs) * segmentMs);
+    
+    // Create segment if it doesn't exist
+    if (!segmentMap.has(pointSegmentStart)) {
+      segmentMap.set(pointSegmentStart, []);
     }
+    
+    // Add point to its segment
+    segmentMap.get(pointSegmentStart)!.push(point);
   }
   
-  // Add final segment
-  if (currentSegmentData.length > 0) {
-    segments.push({
-      startTime: new Date(currentSegmentStart),
-      endTime: new Date(currentSegmentEnd),
-      data: currentSegmentData,
-      id: `segment-${segments.length + 1}`
+  // Convert map to array of segment objects
+  let segmentIndex = 1;
+  Array.from(segmentMap.entries())
+    .sort(([a], [b]) => a - b) // Sort by start time
+    .forEach(([segmentStart, segmentData]) => {
+      if (segmentData.length > 0) {
+        segments.push({
+          id: `segment-${segmentIndex}`,
+          startTime: new Date(segmentStart),
+          endTime: new Date(segmentStart + segmentMs),
+          data: segmentData
+        });
+        segmentIndex++;
+      }
     });
-  }
+  
+  console.log(`Created ${segments.length} time segments`);
+  
+  // Add debug information about the segments
+  segments.forEach((segment, i) => {
+    console.log(`Segment ${i+1}: ${segment.startTime.toISOString()} - ${segment.endTime.toISOString()}, ${segment.data.length} points`);
+    if (segment.data.length > 0) {
+      console.log(`  First point: ${new Date(segment.data[0].timestamp).toISOString()}`);
+      console.log(`  Last point: ${new Date(segment.data[segment.data.length-1].timestamp).toISOString()}`);
+    }
+  });
   
   return segments;
 };
 
-// Extract data for a specific time range
+// Extract data for a specific time range - improved version
 export const extractDataForTimeRange = (
   data: any[],
   timeRange: { start: Date, end: Date }
@@ -443,13 +468,19 @@ export const extractDataForTimeRange = (
   const startTime = timeRange.start.getTime();
   const endTime = timeRange.end.getTime();
   
-  return data.filter(point => {
+  console.log(`Extracting data between ${new Date(startTime).toISOString()} and ${new Date(endTime).toISOString()}`);
+  
+  const filteredData = data.filter(point => {
     const timestamp = typeof point.timestamp === 'number' 
       ? point.timestamp 
       : point.timestamp.getTime();
     
     return timestamp >= startTime && timestamp <= endTime;
   });
+  
+  console.log(`Extracted ${filteredData.length} points from original ${data.length} points`);
+  
+  return filteredData;
 };
 
 // Function to sample data to a manageable size
@@ -457,5 +488,9 @@ export const sampleDataPoints = (data: any[], maxPoints: number = 500): any[] =>
   if (!data || data.length <= maxPoints) return data;
   
   const samplingRate = Math.ceil(data.length / maxPoints);
-  return data.filter((_, idx) => idx % samplingRate === 0);
+  const sampledData = data.filter((_, idx) => idx % samplingRate === 0);
+  
+  console.log(`Sampled ${data.length} points down to ${sampledData.length} points (1:${samplingRate})`);
+  
+  return sampledData;
 };

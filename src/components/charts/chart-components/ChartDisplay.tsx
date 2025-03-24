@@ -59,43 +59,51 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
   }, [containerRef]);
 
   const formatXAxis = (tickItem: any) => {
-    const date = new Date(tickItem);
-    return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    try {
+      const date = new Date(tickItem);
+      if (isNaN(date.getTime())) return '';
+      return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    } catch (e) {
+      return '';
+    }
   };
 
-  // Handle brush change with improved error handling
+  // Improved brush change handler with better error handling
   const handleBrushChange = (brushData: any) => {
-    console.log("Brush event data:", brushData);
+    if (!brushData || !visibleChartData || visibleChartData.length === 0) {
+      console.log("Invalid brush data or no chart data available");
+      return;
+    }
     
     try {
-      if (!brushData || typeof brushData.startIndex === 'undefined' || typeof brushData.endIndex === 'undefined') {
-        console.log("Invalid brush data received");
-        return;
-      }
-      
-      // Make sure we have data to work with
-      if (!visibleChartData || visibleChartData.length === 0) {
-        console.log("No visible chart data available for zooming");
+      // Ensure we have start and end indices
+      if (typeof brushData.startIndex === 'undefined' || typeof brushData.endIndex === 'undefined') {
+        console.log("Missing brush indices");
         return;
       }
       
       // Ensure indices are within bounds
-      const safeStartIndex = Math.max(0, brushData.startIndex);
-      const safeEndIndex = Math.min(visibleChartData.length - 1, brushData.endIndex);
+      const safeStartIndex = Math.max(0, Math.min(visibleChartData.length - 1, brushData.startIndex));
+      const safeEndIndex = Math.max(0, Math.min(visibleChartData.length - 1, brushData.endIndex));
       
-      // Get the actual timestamps from the data
-      const startTimestamp = visibleChartData[safeStartIndex]?.timestamp;
-      const endTimestamp = visibleChartData[safeEndIndex]?.timestamp;
-      
-      // Ensure both timestamps exist
-      if (startTimestamp === undefined || endTimestamp === undefined) {
-        console.log("Missing timestamps in chart data:", startTimestamp, endTimestamp);
+      if (safeStartIndex === safeEndIndex) {
+        console.log("Start and end indices are the same, can't zoom");
         return;
       }
       
-      console.log(`Zooming from ${new Date(startTimestamp).toISOString()} to ${new Date(endTimestamp).toISOString()}`);
+      // Get actual timestamps
+      const startTimestamp = visibleChartData[safeStartIndex]?.timestamp;
+      const endTimestamp = visibleChartData[safeEndIndex]?.timestamp;
       
-      // Call the parent's onBrushChange with the actual timestamp values
+      // Verify timestamps
+      if (startTimestamp === undefined || endTimestamp === undefined) {
+        console.log("Invalid timestamps in data");
+        return;
+      }
+      
+      console.log(`Zooming to time range: ${new Date(startTimestamp).toISOString()} - ${new Date(endTimestamp).toISOString()}`);
+      
+      // Call parent's onBrushChange with valid data
       onBrushChange({
         startIndex: safeStartIndex,
         endIndex: safeEndIndex,
@@ -103,10 +111,10 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
         endValue: endTimestamp
       });
       
-      toast.info("Zoomed in on selected range");
+      toast.info(`Zoomed to selected time range: ${new Date(startTimestamp).toLocaleTimeString()} - ${new Date(endTimestamp).toLocaleTimeString()}`);
     } catch (error) {
-      console.error("Error handling brush change:", error);
-      toast.error("Error applying zoom");
+      console.error("Error in brush change handler:", error);
+      toast.error("Failed to apply zoom");
     }
   };
 
@@ -123,8 +131,8 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
   const domainStart = zoomDomain?.start || 'dataMin';
   const domainEnd = zoomDomain?.end || 'dataMax';
 
-  console.log("Rendering chart with type:", chartType);
-  console.log("Visible signals:", signals.length);
+  console.log(`Rendering ${chartType} chart with ${signals.length} signals and ${visibleChartData.length} data points`);
+  console.log("Current zoom domain:", zoomDomain);
 
   return (
     <div className="bg-card border rounded-md p-3 h-[300px]" ref={containerRef}>

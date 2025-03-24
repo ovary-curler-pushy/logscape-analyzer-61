@@ -1,11 +1,12 @@
 
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect } from 'react';
 import { format } from 'date-fns';
 import { SegmentedPanelsProps } from '@/types/chartTypes';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   Legend, ResponsiveContainer, Brush, BarChart, Bar } from 'recharts';
+import { toast } from 'sonner';
 
 // Custom tooltip component
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -37,15 +38,41 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   getPanelSignals
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [zoomDomain, setZoomDomain] = useState<{ start?: number, end?: number }>({});
+
+  // Reset zoom domain when segment changes
+  useEffect(() => {
+    setZoomDomain({});
+  }, [selectedSegment]);
 
   const handleBrushChange = (brushData: any) => {
-    // Handle brush events - can be implemented if needed
-    console.log("Brush data:", brushData);
+    if (!brushData || !brushData.startValue || !brushData.endValue) {
+      console.log("Invalid brush data");
+      return;
+    }
+    
+    try {
+      console.log(`Zooming segment to: ${new Date(brushData.startValue).toISOString()} - ${new Date(brushData.endValue).toISOString()}`);
+      
+      setZoomDomain({
+        start: brushData.startValue,
+        end: brushData.endValue
+      });
+      
+      toast.info(`Zoomed in on selected time range within segment`);
+    } catch (error) {
+      console.error("Error handling segment brush change:", error);
+    }
   };
 
   const formatXAxis = (tickItem: any) => {
-    const date = new Date(tickItem);
-    return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    try {
+      const date = new Date(tickItem);
+      if (isNaN(date.getTime())) return '';
+      return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
+    } catch (e) {
+      return '';
+    }
   };
 
   if (timeSegments.length === 0) {
@@ -61,6 +88,10 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   // Get the selected segment's data and signals
   const selectedSegmentData = timeSegments.find(s => s.id === selectedSegment)?.data || [];
   const panelSignals = getPanelSignals('panel-1'); // Using first panel for all segments
+
+  // Set domain values for zoom
+  const domainStart = zoomDomain?.start || 'dataMin';
+  const domainEnd = zoomDomain?.end || 'dataMax';
 
   return (
     <div className="space-y-4">
@@ -89,6 +120,12 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
             {timeSegments.find(s => s.id === selectedSegment) && (
               <>
                 Time Segment: {format(timeSegments.find(s => s.id === selectedSegment)!.startTime, 'HH:mm')} - {format(timeSegments.find(s => s.id === selectedSegment)!.endTime, 'HH:mm')}
+                <button 
+                  onClick={() => setZoomDomain({})}
+                  className="ml-2 text-xs text-primary hover:text-primary/80 underline"
+                >
+                  Reset Zoom
+                </button>
               </>
             )}
           </CardTitle>
@@ -106,7 +143,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
                     dataKey="timestamp" 
                     tickFormatter={formatXAxis} 
                     type="number"
-                    domain={['dataMin', 'dataMax']}
+                    domain={[domainStart, domainEnd]}
                     scale="time"
                   />
                   <YAxis />
@@ -144,7 +181,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
                     dataKey="timestamp" 
                     tickFormatter={formatXAxis} 
                     type="number"
-                    domain={['dataMin', 'dataMax']}
+                    domain={[domainStart, domainEnd]}
                     scale="time"
                   />
                   <YAxis />

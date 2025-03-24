@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -200,8 +199,10 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     setTimeout(processBatch, 0);
   }, []);
   
-  // Handle time range changes
+  // Handle time range changes - optimized version
   const handleTimeRangeChange = useCallback((range: { start: Date, end: Date }) => {
+    console.log(`Time range selected: ${range.start.toISOString()} - ${range.end.toISOString()}`);
+    
     setCustomTimeRange(range);
     setDataTimeRange(prev => ({
       ...prev,
@@ -214,8 +215,16 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     // Process in next tick to allow UI to update
     setTimeout(() => {
       try {
+        // Extract data for the selected time range
         const filteredData = extractDataForTimeRange(formattedChartData, range);
         console.log(`Extracted ${filteredData.length} data points for selected time range`);
+        
+        if (filteredData.length === 0) {
+          toast.warning("No data points found in the selected time range");
+          setIsProcessing(false);
+          setProcessingStatus("");
+          return;
+        }
         
         // Create time segments for the filtered data
         const segments = segmentDataByTime(filteredData, SEGMENT_MINUTES);
@@ -227,9 +236,10 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
           setSelectedSegment(segments[0].id);
           setTimeNavigation('segments');
           setTimeRangePreset('segments');
+          toast.success(`Created ${segments.length} time segments for selected range`);
+        } else {
+          toast.warning("Could not create time segments for the selected range");
         }
-        
-        toast.success(`Created ${segments.length} time segments for selected range`);
       } catch (error) {
         console.error("Error creating time segments:", error);
         toast.error("Error processing time range");
@@ -247,28 +257,34 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     setZoomDomain({}); // Reset zoom when changing segments
   }, []);
   
-  // Handle chart type change
+  // Handle chart type change with debug info
   const handleChartTypeChange = useCallback((type: 'line' | 'bar') => {
-    console.log("Changing chart type to:", type);
+    console.log(`Changing chart type from ${chartType} to ${type}`);
     setChartType(type);
-  }, []);
+    toast.info(`Switched to ${type} chart view`);
+  }, [chartType]);
   
   // Handle zoom domain change from brush selection
   const handleBrushChange = useCallback((brushData: any) => {
-    if (!brushData.startValue && brushData.startValue !== 0) return;
-    if (!brushData.endValue && brushData.endValue !== 0) return;
-    
-    console.log("Zoom domain updated:", brushData);
-    
-    setZoomDomain({
-      start: brushData.startValue,
-      end: brushData.endValue
-    });
+    if (brushData && brushData.startValue !== undefined && brushData.endValue !== undefined) {
+      console.log("Zoom domain updated:", brushData);
+      
+      setZoomDomain({
+        start: brushData.startValue,
+        end: brushData.endValue
+      });
+      
+      toast.info("Zoomed to selected time range");
+    } else {
+      console.log("Invalid brush data:", brushData);
+    }
   }, []);
   
   // Reset zoom domain
   const handleZoomReset = useCallback(() => {
+    console.log("Resetting zoom domain");
     setZoomDomain({});
+    toast.info("Zoom reset");
   }, []);
   
   // Handle max points change for display
@@ -414,6 +430,27 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
             >
               <RefreshCcw className="h-4 w-4 mr-1" /> Reset
             </Button>
+            
+            <div className="flex gap-1">
+              <Button
+                variant={chartType === 'line' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleChartTypeChange('line')}
+                title="Line chart"
+                disabled={isProcessing}
+              >
+                <LineChartIcon className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={chartType === 'bar' ? 'default' : 'outline'}
+                size="sm"
+                onClick={() => handleChartTypeChange('bar')}
+                title="Bar chart"
+                disabled={isProcessing}
+              >
+                <BarChartIcon className="h-4 w-4" />
+              </Button>
+            </div>
           </div>
         </div>
       </CardHeader>
