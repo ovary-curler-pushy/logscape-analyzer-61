@@ -1,89 +1,79 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from "sonner";
-import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
-  Legend, ResponsiveContainer, Brush, ReferenceLine, BarChart, Bar
-} from 'recharts';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Slider } from "@/components/ui/slider";
-import { 
-  Split, Maximize, X, Plus, RefreshCcw, ZoomIn, ZoomOut,
-  LineChart as LineChartIcon, BarChart as BarChartIcon,
-  Clock, CalendarRange, ChevronRight, ChevronLeft
-} from 'lucide-react';
-import {
-  Pagination,
-  PaginationContent,
-  PaginationItem,
-  PaginationLink,
-  PaginationNext,
-  PaginationPrevious,
-  PaginationEllipsis
-} from "@/components/ui/pagination";
-import { ScrollArea } from "@/components/ui/scroll-area";
+import { LineChart as LineChartIcon, BarChart as BarChartIcon, RefreshCcw } from 'lucide-react';
 import { RegexPattern } from "@/components/regex/RegexManager";
-import { cn } from "@/lib/utils";
-import { format, addHours, subHours, startOfHour, endOfHour, addDays, subDays } from 'date-fns';
 import ChartControls from "./chart-components/ChartControls";
-import TimeNavigationControls from "./chart-components/TimeNavigationControls";
 import PanelTabsManager from "./chart-components/PanelTabsManager";
 import ChartDisplay from "./chart-components/ChartDisplay";
 import LogSample from "./chart-components/LogSample";
-import { processLogDataInChunks } from "@/utils/logProcessing";
+import TimeRangeSelector from "./chart-components/TimeRangeSelector";
+import SegmentedPanels from "./chart-components/SegmentedPanels";
+import { processLogDataInChunks, segmentDataByTime, extractDataForTimeRange, sampleDataPoints } from "@/utils/logProcessing";
 
-// Types moved to separate file for clarity
 import { 
   LogData, 
   Signal, 
   ChartPanel, 
-  LogChartProps 
+  LogChartProps,
+  TimeSegment,
+  DataTimeRange 
 } from "@/types/chartTypes";
 
 // Constants
 const MAX_CHART_POINTS = 5000;
 const MAX_VISIBLE_POINTS = 1000; 
-const MAX_CHART_POINTS_LIMIT = 50000;
-
-const TIME_RANGE_PRESETS = [
-  { label: 'Last hour', value: '1h', getRange: (now: Date) => ({ start: subHours(now, 1), end: now }) },
-  { label: 'Last 6 hours', value: '6h', getRange: (now: Date) => ({ start: subHours(now, 6), end: now }) },
-  { label: 'Last 12 hours', value: '12h', getRange: (now: Date) => ({ start: subHours(now, 12), end: now }) },
-  { label: 'Last 24 hours', value: '24h', getRange: (now: Date) => ({ start: subHours(now, 24), end: now }) },
-  { label: 'Last 3 days', value: '3d', getRange: (now: Date) => ({ start: subDays(now, 3), end: now }) },
-  { label: 'Last 7 days', value: '7d', getRange: (now: Date) => ({ start: subDays(now, 7), end: now }) },
-  { label: 'All data', value: 'all', getRange: () => ({ start: undefined, end: undefined }) },
-];
+const SEGMENT_MINUTES = 15; // Each segment is 15 minutes
 
 const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) => {
+  // Data states
   const [chartData, setChartData] = useState<LogData[]>([]);
   const [formattedChartData, setFormattedChartData] = useState<any[]>([]);
   const [displayedChartData, setDisplayedChartData] = useState<any[]>([]);
+  const [timeSegments, setTimeSegments] = useState<TimeSegment[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [panels, setPanels] = useState<ChartPanel[]>([{ id: 'panel-1', signals: [] }]);
+  const [stringValueMap, setStringValueMap] = useState<Record<string, Record<string, number>>>({});
+  const [rawLogSample, setRawLogSample] = useState<string[]>([]);
+  
+  // UI states
   const [activeTab, setActiveTab] = useState<string>("panel-1");
+  const [selectedSegment, setSelectedSegment] = useState<string>("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [zoomDomain, setZoomDomain] = useState<{ start?: number, end?: number }>({});
-  const [dataStats, setDataStats] = useState<{ total: number, displayed: number, samplingRate: number, currentPage?: number, totalPages?: number }>({ 
-    total: 0, 
-    displayed: 0, 
-    samplingRate: 1 
+  const [dataTimeRange, setDataTimeRange] = useState<DataTimeRange>({ 
+    min: new Date(), 
+    max: new Date(),
+    selected: {
+      start: new Date(),
+      end: new Date()
+    }
   });
-  const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [processingStatus, setProcessingStatus] = useState<string>("");
-  const [maxDisplayPoints, setMaxDisplayPoints] = useState<number>(MAX_CHART_POINTS);
+  
+  // View & navigation states
+  const [timeNavigation, setTimeNavigation] = useState<'preset' | 'pagination' | 'window' | 'segments'>('preset');
   const [timeRangePreset, setTimeRangePreset] = useState<string>('all');
+  const [timeWindowSize, setTimeWindowSize] = useState<number>(1); // Default 1 hour window
   const [customTimeRange, setCustomTimeRange] = useState<{ start?: Date, end?: Date }>({});
   const [currentPage, setCurrentPage] = useState<number>(1);
-  const containerRef = useRef<HTMLDivElement>(null);
-  const [rawLogSample, setRawLogSample] = useState<string[]>([]);
-  const [stringValueMap, setStringValueMap] = useState<Record<string, Record<string, number>>>({});
-  const [dataRange, setDataRange] = useState<{ min?: Date, max?: Date }>({});
-  const [timeNavigation, setTimeNavigation] = useState<'preset' | 'pagination' | 'window'>('preset');
-  const [timeWindowSize, setTimeWindowSize] = useState<number>(24); // Default 24 hours window
+  const [maxDisplayPoints, setMaxDisplayPoints] = useState<number>(MAX_CHART_POINTS);
   
+  // Processing states
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
+  const [processingStatus, setProcessingStatus] = useState<string>("");
+  const [dataStats, setDataStats] = useState<{ 
+    total: number, displayed: number, samplingRate: number, 
+    currentPage?: number, totalPages?: number 
+  }>({ 
+    total: 0, displayed: 0, samplingRate: 1 
+  });
+  
+  const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Process log data when logs & patterns are available
   useEffect(() => {
     if (!logContent || patterns.length === 0) return;
     
@@ -96,7 +86,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       console.log("Processing log data with patterns:", patterns);
       console.log(`Starting to process ${logLines.length} log lines`);
       
-      // Call the refactored processing function from utils
+      // Call the processing function with our new approach
       processLogDataInChunks(
         logContent, 
         patterns, 
@@ -107,6 +97,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
         setStringValueMap, 
         setProcessingStatus, 
         setIsProcessing,
+        setDataTimeRange,
         optimizedFormatChartData
       );
       
@@ -117,7 +108,8 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       setIsProcessing(false);
     }
   }, [logContent, patterns]);
-
+  
+  // Format chart data optimized for our new approach
   const optimizedFormatChartData = useCallback((data: LogData[], valueMap: Record<string, Record<string, number>>) => {
     if (data.length === 0) {
       setIsProcessing(false);
@@ -137,11 +129,6 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     const BATCH_SIZE = getBatchSize();
     const totalBatches = Math.ceil(data.length / BATCH_SIZE);
     const result: any[] = [];
-    
-    const timestamps = data.map(item => item.timestamp.getTime());
-    const minTime = new Date(Math.min(...timestamps));
-    const maxTime = new Date(Math.max(...timestamps));
-    setDataRange({ min: minTime, max: maxTime });
     
     let batchIndex = 0;
     
@@ -189,7 +176,22 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     
     const finalizeBatches = () => {
       setFormattedChartData(result);
-      prepareDisplayData(result);
+      
+      // For initial state, sample data to avoid overwhelming the UI
+      try {
+        const sampledData = sampleDataPoints(result, 200);
+        setDisplayedChartData(sampledData);
+        
+        setDataStats({ 
+          total: result.length, 
+          displayed: sampledData.length, 
+          samplingRate: Math.ceil(result.length / sampledData.length)
+        });
+      } catch (error) {
+        console.error("Error sampling data:", error);
+        setDisplayedChartData([]);
+      }
+      
       setIsProcessing(false);
       setProcessingStatus("");
       toast.success("Chart data ready");
@@ -197,276 +199,103 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     
     setTimeout(processBatch, 0);
   }, []);
-
-  const prepareDisplayData = useCallback((data: any[]) => {
-    setProcessingStatus("Preparing chart data for display");
+  
+  // Handle time range changes
+  const handleTimeRangeChange = useCallback((range: { start: Date, end: Date }) => {
+    setCustomTimeRange(range);
+    setDataTimeRange(prev => ({
+      ...prev,
+      selected: range
+    }));
     
-    const prepareData = () => {
+    setIsProcessing(true);
+    setProcessingStatus("Preparing time segments");
+    
+    // Process in next tick to allow UI to update
+    setTimeout(() => {
       try {
-        const total = data.length;
-        let sampled;
-        let samplingRate = 1;
+        const filteredData = extractDataForTimeRange(formattedChartData, range);
+        console.log(`Extracted ${filteredData.length} data points for selected time range`);
         
-        if (total > maxDisplayPoints) {
-          samplingRate = Math.ceil(total / maxDisplayPoints);
-          sampled = data.filter((_, i) => i % samplingRate === 0);
-          
-          console.log(`Sampled data from ${total} to ${sampled.length} points (rate: 1/${samplingRate})`);
-          setDataStats({ 
-            total, 
-            displayed: sampled.length, 
-            samplingRate, 
-            currentPage: 1, 
-            totalPages: Math.ceil(total / maxDisplayPoints) 
-          });
-          
-          if (timeNavigation === 'pagination') {
-            setCurrentPage(1);
-          }
-          
-          toast.info(`Displaying ${sampled.length.toLocaleString()} of ${total.toLocaleString()} data points for performance`);
-        } else {
-          sampled = data;
-          setDataStats({ 
-            total, 
-            displayed: total, 
-            samplingRate: 1,
-            currentPage: 1,
-            totalPages: 1
-          });
+        // Create time segments for the filtered data
+        const segments = segmentDataByTime(filteredData, SEGMENT_MINUTES);
+        console.log(`Created ${segments.length} time segments`);
+        
+        setTimeSegments(segments);
+        
+        if (segments.length > 0) {
+          setSelectedSegment(segments[0].id);
+          setTimeNavigation('segments');
+          setTimeRangePreset('segments');
         }
         
-        setDisplayedChartData(sampled);
-        setProcessingStatus("");
-        setIsProcessing(false);
+        toast.success(`Created ${segments.length} time segments for selected range`);
       } catch (error) {
-        console.error("Error preparing chart data:", error);
-        toast.error("Error preparing chart data");
+        console.error("Error creating time segments:", error);
+        toast.error("Error processing time range");
+      } finally {
         setIsProcessing(false);
         setProcessingStatus("");
       }
-    };
+    }, 0);
+  }, [formattedChartData]);
+  
+  // Handle switching to a different segment
+  const handleSegmentChange = useCallback((segmentId: string) => {
+    console.log("Switching to segment:", segmentId);
+    setSelectedSegment(segmentId);
+    setZoomDomain({}); // Reset zoom when changing segments
+  }, []);
+  
+  // Handle chart type change
+  const handleChartTypeChange = useCallback((type: 'line' | 'bar') => {
+    console.log("Changing chart type to:", type);
+    setChartType(type);
+  }, []);
+  
+  // Handle zoom domain change from brush selection
+  const handleBrushChange = useCallback((brushData: any) => {
+    if (!brushData.startValue && brushData.startValue !== 0) return;
+    if (!brushData.endValue && brushData.endValue !== 0) return;
     
-    window.setTimeout(prepareData, 0);
-  }, [maxDisplayPoints, timeNavigation]);
-
-  const applyTimeRangeFilter = useCallback((data: any[], timeRange: { start?: Date | number, end?: Date | number }) => {
-    if (!timeRange.start && !timeRange.end) {
-      return data;
-    }
+    console.log("Zoom domain updated:", brushData);
     
-    const startTime = timeRange.start ? (timeRange.start instanceof Date ? timeRange.start.getTime() : timeRange.start) : undefined;
-    const endTime = timeRange.end ? (timeRange.end instanceof Date ? timeRange.end.getTime() : timeRange.end) : undefined;
-    
-    return data.filter(item => {
-      const itemTime = item.timestamp;
-      if (startTime && endTime) {
-        return itemTime >= startTime && itemTime <= endTime;
-      } else if (startTime) {
-        return itemTime >= startTime;
-      } else if (endTime) {
-        return itemTime <= endTime;
-      }
-      return true;
+    setZoomDomain({
+      start: brushData.startValue,
+      end: brushData.endValue
     });
   }, []);
-
-  const getVisibleData = useCallback(() => {
-    let filteredData = formattedChartData;
-    
-    if (customTimeRange.start || customTimeRange.end) {
-      filteredData = applyTimeRangeFilter(formattedChartData, customTimeRange);
-    }
-    
-    if (zoomDomain.start && zoomDomain.end) {
-      filteredData = filteredData.filter(
-        (item) => item.timestamp >= zoomDomain.start! && item.timestamp <= zoomDomain.end!
-      );
-    }
-    
-    if (filteredData.length > MAX_VISIBLE_POINTS) {
-      const samplingRate = Math.ceil(filteredData.length / MAX_VISIBLE_POINTS);
-      return filteredData.filter((_, i) => i % samplingRate === 0);
-    }
-    
-    return filteredData;
-  }, [formattedChartData, zoomDomain, customTimeRange, applyTimeRangeFilter]);
-
-  const handlePageChange = useCallback((page: number) => {
-    if (!dataStats.totalPages) return;
-    
-    if (page < 1) page = 1;
-    if (page > dataStats.totalPages) page = dataStats.totalPages;
-    
-    setCurrentPage(page);
-    
-    const pageSize = maxDisplayPoints;
-    const startIndex = (page - 1) * pageSize;
-    const endIndex = Math.min(startIndex + pageSize, formattedChartData.length);
-    
-    const pageData = formattedChartData.slice(startIndex, endIndex);
-    
-    setDisplayedChartData(pageData);
-    setDataStats({
-      ...dataStats,
-      currentPage: page,
-      displayed: pageData.length
-    });
-    
-    if (dataRange.min && dataRange.max && formattedChartData.length > 0) {
-      const pageStartTime = new Date(pageData[0].timestamp);
-      const pageEndTime = new Date(pageData[pageData.length - 1].timestamp);
-      setCustomTimeRange({ start: pageStartTime, end: pageEndTime });
-    }
-    
+  
+  // Reset zoom domain
+  const handleZoomReset = useCallback(() => {
     setZoomDomain({});
-  }, [dataStats, maxDisplayPoints, formattedChartData, dataRange]);
-
-  const navigateTime = useCallback((direction: 'forward' | 'backward') => {
-    if (!customTimeRange.start || !customTimeRange.end) return;
-    
-    const start = customTimeRange.start;
-    const end = customTimeRange.end;
-    const duration = end.getTime() - start.getTime();
-    
-    if (direction === 'forward') {
-      const newStart = new Date(start.getTime() + duration);
-      const newEnd = new Date(end.getTime() + duration);
-      if (dataRange.max && newEnd > dataRange.max) {
-        const adjustedEnd = dataRange.max;
-        const adjustedStart = new Date(adjustedEnd.getTime() - duration);
-        setCustomTimeRange({ start: adjustedStart, end: adjustedEnd });
-      } else {
-        setCustomTimeRange({ start: newStart, end: newEnd });
-      }
-    } else {
-      const newStart = new Date(start.getTime() - duration);
-      const newEnd = new Date(end.getTime() - duration);
-      if (dataRange.min && newStart < dataRange.min) {
-        const adjustedStart = dataRange.min;
-        const adjustedEnd = new Date(adjustedStart.getTime() + duration);
-        setCustomTimeRange({ start: adjustedStart, end: adjustedEnd });
-      } else {
-        setCustomTimeRange({ start: newStart, end: newEnd });
-      }
-    }
-  }, [customTimeRange, dataRange]);
-
-  const navigateTimeWindow = useCallback((direction: 'forward' | 'backward') => {
-    if (!dataRange.min || !dataRange.max) return;
-    
-    const windowMs = timeWindowSize * 60 * 60 * 1000;
-    
-    let newStart, newEnd;
-    
-    if (!customTimeRange.start || !customTimeRange.end) {
-      newEnd = dataRange.max;
-      newStart = new Date(newEnd.getTime() - windowMs);
-    } else {
-      if (direction === 'forward') {
-        newStart = new Date(customTimeRange.end.getTime());
-        newEnd = new Date(newStart.getTime() + windowMs);
-        
-        if (newEnd > dataRange.max) {
-          newEnd = dataRange.max;
-          newStart = new Date(newEnd.getTime() - windowMs);
-        }
-      } else {
-        newEnd = new Date(customTimeRange.start.getTime());
-        newStart = new Date(newEnd.getTime() - windowMs);
-        
-        if (newStart < dataRange.min) {
-          newStart = dataRange.min;
-          newEnd = new Date(newStart.getTime() + windowMs);
-        }
-      }
-    }
-    
-    setCustomTimeRange({ start: newStart, end: newEnd });
-    setZoomDomain({});
-  }, [customTimeRange, dataRange, timeWindowSize]);
-
-  useEffect(() => {
-    if (timeNavigation === 'window' && customTimeRange.start && customTimeRange.end) {
-      const filteredData = applyTimeRangeFilter(formattedChartData, customTimeRange);
-      
-      let sampledData = filteredData;
-      let samplingRate = 1;
-      
-      if (filteredData.length > maxDisplayPoints) {
-        samplingRate = Math.ceil(filteredData.length / maxDisplayPoints);
-        sampledData = filteredData.filter((_, i) => i % samplingRate === 0);
-      }
-      
-      setDisplayedChartData(sampledData);
-      setDataStats({
-        total: formattedChartData.length,
-        displayed: sampledData.length,
-        samplingRate,
-        currentPage: 1,
-        totalPages: Math.ceil(formattedChartData.length / maxDisplayPoints)
-      });
-    }
-  }, [customTimeRange, timeNavigation, formattedChartData, maxDisplayPoints, applyTimeRangeFilter]);
-
+  }, []);
+  
+  // Handle max points change for display
+  const handleMaxPointsChange = useCallback((value: number[]) => {
+    const newMaxPoints = value[0];
+    setMaxDisplayPoints(newMaxPoints);
+  }, []);
+  
+  // Toggle time navigation mode & preset
   const handleTimeRangePresetChange = useCallback((preset: string) => {
-    setTimeRangePreset(preset);
-    setZoomDomain({});
-    
-    if (preset === 'all') {
-      setTimeNavigation('preset');
-      setCustomTimeRange({});
-      
-      prepareDisplayData(formattedChartData);
-    } else if (preset === 'custom') {
-      if (!customTimeRange.start || !customTimeRange.end) {
-        if (dataRange.max) {
-          const end = dataRange.max;
-          const start = subHours(end, 1);
-          setCustomTimeRange({ start, end });
-        }
-      }
-    } else if (preset === 'window') {
-      setTimeNavigation('window');
-      
-      if (dataRange.max) {
-        const end = dataRange.max;
-        const start = subHours(end, timeWindowSize);
-        setCustomTimeRange({ start, end });
-      }
-    } else if (preset === 'pagination') {
-      setTimeNavigation('pagination');
-      setCustomTimeRange({});
-      
-      handlePageChange(1);
+    if (preset === 'segments') {
+      setTimeNavigation('segments');
+      setTimeRangePreset('segments');
     } else {
-      setTimeNavigation('preset');
-      const presetConfig = TIME_RANGE_PRESETS.find(p => p.value === preset);
-      if (presetConfig && dataRange.max) {
-        const range = presetConfig.getRange(dataRange.max);
-        if (dataRange.min && range.start && range.start < dataRange.min) {
-          range.start = dataRange.min;
-        }
-        setCustomTimeRange(range);
+      setTimeRangePreset(preset);
+      
+      if (preset === 'pagination') {
+        setTimeNavigation('pagination');
+      } else if (preset === 'window') {
+        setTimeNavigation('window');
+      } else {
+        setTimeNavigation('preset');
       }
     }
-  }, [customTimeRange, dataRange, timeWindowSize, formattedChartData, prepareDisplayData, handlePageChange]);
-
-  const getTimeNavigationValue = useCallback(() => {
-    if (timeNavigation === 'pagination') return 'pagination';
-    if (timeNavigation === 'window') return 'window';
-    if (timeNavigation === 'preset') return timeRangePreset;
-    return 'custom';
-  }, [timeNavigation, timeRangePreset]);
-
-  const visibleChartData = useMemo(() => {
-    if (timeNavigation === 'pagination') {
-      return displayedChartData;
-    }
-    
-    return getVisibleData();
-  }, [getVisibleData, displayedChartData, timeNavigation]);
-
+  }, []);
+  
+  // Panel management functions
   const handleAddPanel = useCallback(() => {
     const newPanelId = `panel-${panels.length + 1}`;
     setPanels([...panels, { id: newPanelId, signals: [] }]);
@@ -515,20 +344,8 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       return signal;
     }));
   }, [signals]);
-
-  const handleZoomReset = useCallback(() => {
-    setZoomDomain({});
-  }, []);
-
-  const formatXAxis = useCallback((tickItem: any) => {
-    const date = new Date(tickItem);
-    return `${date.getHours()}:${date.getMinutes().toString().padStart(2, '0')}`;
-  }, []);
-
-  const formatTimeLabel = useCallback((date: Date) => {
-    return format(date, 'MMM dd, HH:mm');
-  }, []);
-
+  
+  // Get visible signals for a panel
   const getPanelSignals = useCallback((panelId: string) => {
     const panel = panels.find(p => p.id === panelId);
     if (!panel) return [];
@@ -537,11 +354,19 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       panel.signals.includes(signal.id) && signal.visible
     );
   }, [panels, signals]);
-
+  
+  // Pagination UI rendering
+  const renderPaginationControls = useCallback(() => {
+    // Simplified for this example - can be expanded if needed
+    return null;
+  }, []);
+  
+  // Reset all data and settings
   const handleResetAll = useCallback(() => {
     setChartData([]);
     setFormattedChartData([]);
     setDisplayedChartData([]);
+    setTimeSegments([]);
     setSignals([]);
     setPanels([{ id: 'panel-1', signals: [] }]);
     setActiveTab("panel-1");
@@ -554,149 +379,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     setTimeRangePreset('all');
     setTimeNavigation('preset');
     setCurrentPage(1);
+    setSelectedSegment("");
     toast.success("Reset all data and settings");
   }, []);
 
-  const handleMaxPointsChange = useCallback((value: number[]) => {
-    const newMaxPoints = value[0];
-    if (newMaxPoints !== maxDisplayPoints) {
-      setMaxDisplayPoints(newMaxPoints);
-      
-      if (formattedChartData.length > 0) {
-        setProcessingStatus("Resampling data...");
-        setIsProcessing(true);
-        
-        setTimeout(() => {
-          try {
-            if (timeNavigation === 'pagination') {
-              const totalPages = Math.ceil(formattedChartData.length / newMaxPoints);
-              setDataStats({
-                ...dataStats,
-                totalPages
-              });
-              handlePageChange(currentPage);
-            } else {
-              prepareDisplayData(formattedChartData);
-            }
-            setIsProcessing(false);
-          } catch (error) {
-            console.error("Error updating display points:", error);
-            toast.error("Error updating display settings");
-            setIsProcessing(false);
-            setProcessingStatus("");
-          }
-        }, 0);
-      }
-    }
-  }, [maxDisplayPoints, formattedChartData, timeNavigation, dataStats, currentPage, handlePageChange, prepareDisplayData]);
-
-  const handleBrushChange = useCallback((brushData: any) => {
-    if (!brushData.startIndex && brushData.startIndex !== 0) return;
-    if (!brushData.endIndex && brushData.endIndex !== 0) return;
-    if (brushData.startIndex === brushData.endIndex) return;
-    if (visibleChartData.length === 0) return;
-    
-    const startIndex = Math.max(0, brushData.startIndex);
-    const endIndex = Math.min(visibleChartData.length - 1, brushData.endIndex);
-    
-    const startTimestamp = visibleChartData[startIndex]?.timestamp;
-    const endTimestamp = visibleChartData[endIndex]?.timestamp;
-    
-    if (!startTimestamp || !endTimestamp) {
-      console.error("Invalid brush data timestamps:", startTimestamp, endTimestamp);
-      return;
-    }
-    
-    console.log("Brush zoom applied:", new Date(startTimestamp).toISOString(), new Date(endTimestamp).toISOString());
-    
-    setZoomDomain({
-      start: startTimestamp,
-      end: endTimestamp
-    });
-  }, [visibleChartData]);
-
-  const renderPaginationControls = useCallback(() => {
-    if (!dataStats.totalPages || dataStats.totalPages <= 1) return null;
-    
-    return (
-      <Pagination className="mt-0">
-        <PaginationContent>
-          <PaginationItem>
-            {currentPage <= 1 ? (
-              <span className="flex h-10 items-center gap-1 pl-2.5 pr-2.5 text-muted-foreground">
-                <ChevronLeft className="h-4 w-4" />
-                <span>Previous</span>
-              </span>
-            ) : (
-              <PaginationPrevious 
-                onClick={() => handlePageChange(currentPage - 1)} 
-                tabIndex={0}
-              />
-            )}
-          </PaginationItem>
-          
-          {currentPage > 2 && (
-            <PaginationItem>
-              <PaginationLink onClick={() => handlePageChange(1)}>
-                1
-              </PaginationLink>
-            </PaginationItem>
-          )}
-          
-          {currentPage > 3 && <PaginationEllipsis />}
-          
-          {currentPage > 1 && (
-            <PaginationItem>
-              <PaginationLink onClick={() => handlePageChange(currentPage - 1)}>
-                {currentPage - 1}
-              </PaginationLink>
-            </PaginationItem>
-          )}
-          
-          <PaginationItem>
-            <PaginationLink isActive onClick={() => handlePageChange(currentPage)}>
-              {currentPage}
-            </PaginationLink>
-          </PaginationItem>
-          
-          {currentPage < dataStats.totalPages && (
-            <PaginationItem>
-              <PaginationLink onClick={() => handlePageChange(currentPage + 1)}>
-                {currentPage + 1}
-              </PaginationLink>
-            </PaginationItem>
-          )}
-          
-          {currentPage < dataStats.totalPages - 2 && <PaginationEllipsis />}
-          
-          {currentPage < dataStats.totalPages - 1 && (
-            <PaginationItem>
-              <PaginationLink onClick={() => handlePageChange(dataStats.totalPages)}>
-                {dataStats.totalPages}
-              </PaginationLink>
-            </PaginationItem>
-          )}
-          
-          <PaginationItem>
-            {currentPage >= (dataStats.totalPages || 1) ? (
-              <span className="flex h-10 items-center gap-1 pl-2.5 pr-2.5 text-muted-foreground">
-                <span>Next</span>
-                <ChevronRight className="h-4 w-4" />
-              </span>
-            ) : (
-              <PaginationNext 
-                onClick={() => handlePageChange(currentPage + 1)}
-                tabIndex={0}
-              />
-            )}
-          </PaginationItem>
-        </PaginationContent>
-      </Pagination>
-    );
-  }, [currentPage, dataStats.totalPages, handlePageChange]);
-
   return (
-    <Card className={cn("shadow-sm border-border/50", className)}>
+    <Card className={className}>
       <CardHeader className="pb-2">
         <div className="flex justify-between items-center flex-wrap gap-4">
           <div>
@@ -722,24 +410,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
               size="sm" 
               disabled={isProcessing || formattedChartData.length === 0}
               title="Reset chart"
-              onClick={() => {
-                setChartData([]);
-                setFormattedChartData([]);
-                setDisplayedChartData([]);
-                setSignals([]);
-                setPanels([{ id: 'panel-1', signals: [] }]);
-                setActiveTab("panel-1");
-                setChartType('line');
-                setZoomDomain({});
-                setStringValueMap({});
-                setRawLogSample([]);
-                setDataStats({ total: 0, displayed: 0, samplingRate: 1 });
-                setCustomTimeRange({});
-                setTimeRangePreset('all');
-                setTimeNavigation('preset');
-                setCurrentPage(1);
-                toast.success("All data has been reset");
-              }}
+              onClick={handleResetAll}
             >
               <RefreshCcw className="h-4 w-4 mr-1" /> Reset
             </Button>
@@ -770,6 +441,14 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
         
         {chartData.length > 0 && (
           <div className="space-y-4">
+            {/* Time Range Selector */}
+            <TimeRangeSelector
+              dataTimeRange={dataTimeRange}
+              onTimeRangeChange={handleTimeRangeChange}
+              isProcessing={isProcessing}
+            />
+            
+            {/* Chart Controls */}
             <ChartControls 
               dataStats={dataStats}
               timeNavigation={timeNavigation}
@@ -782,49 +461,67 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
               formattedChartData={formattedChartData}
               currentPage={currentPage}
               isProcessing={isProcessing}
-              onTimeRangePresetChange={(preset) => handleTimeRangePresetChange(preset)}
-              onTimeWindowSizeChange={(size) => setTimeWindowSize(size)}
-              onNavigateTimeWindow={(direction) => navigateTimeWindow(direction)}
-              onNavigateTime={(direction) => navigateTime(direction)}
-              onMaxPointsChange={(points) => handleMaxPointsChange(points)}
-              onChartTypeChange={(type) => setChartType(type)}
-              onZoomReset={() => handleZoomReset()}
+              selectedSegment={selectedSegment}
+              timeSegments={timeSegments}
+              onTimeRangePresetChange={handleTimeRangePresetChange}
+              onTimeWindowSizeChange={setTimeWindowSize}
+              onNavigateTimeWindow={() => {}}
+              onNavigateTime={() => {}}
+              onMaxPointsChange={handleMaxPointsChange}
+              onChartTypeChange={handleChartTypeChange}
+              onZoomReset={handleZoomReset}
+              onSegmentChange={handleSegmentChange}
               renderPaginationControls={renderPaginationControls}
             />
             
             <div className="text-xs flex flex-wrap gap-x-4 gap-y-1 text-muted-foreground">
               <div>Total data points: <span className="font-medium">{dataStats.total.toLocaleString()}</span></div>
-              <div>Displayed: <span className="font-medium">{dataStats.displayed.toLocaleString()}</span></div>
-              {dataStats.samplingRate > 1 && (
-                <div>Sampling: <span className="font-medium">1:{dataStats.samplingRate}</span></div>
-              )}
-              {customTimeRange.start && customTimeRange.end && (
-                <div>Range: <span className="font-medium">{formatTimeLabel(customTimeRange.start)} - {formatTimeLabel(customTimeRange.end)}</span></div>
+              {timeNavigation === 'segments' && (
+                <>
+                  <div>Time segments: <span className="font-medium">{timeSegments.length}</span></div>
+                  <div>Segment size: <span className="font-medium">{SEGMENT_MINUTES} minutes</span></div>
+                </>
               )}
             </div>
             
-            <PanelTabsManager
-              panels={panels}
-              activeTab={activeTab}
-              signals={signals}
-              onActiveTabChange={setActiveTab}
-              onAddPanel={handleAddPanel}
-              onRemovePanel={handleRemovePanel}
-              onAddSignal={handleAddSignalToPanel}
-              onRemoveSignal={handleRemoveSignalFromPanel}
-              onToggleSignalVisibility={toggleSignalVisibility}
-              renderChartDisplay={(panelId) => (
-                <ChartDisplay
-                  containerRef={containerRef}
-                  chartType={chartType}
-                  visibleChartData={visibleChartData}
-                  zoomDomain={zoomDomain}
-                  signals={getPanelSignals(panelId)}
-                  onBrushChange={handleBrushChange}
-                />
-              )}
-            />
+            {/* Segmented Panels - Shown when in segment mode */}
+            {timeNavigation === 'segments' && timeSegments.length > 0 && (
+              <SegmentedPanels
+                timeSegments={timeSegments}
+                signals={signals}
+                selectedSegment={selectedSegment}
+                onSegmentChange={handleSegmentChange}
+                chartType={chartType}
+                getPanelSignals={getPanelSignals}
+              />
+            )}
             
+            {/* Standard Panel View - Shown when not in segment mode */}
+            {timeNavigation !== 'segments' && (
+              <PanelTabsManager
+                panels={panels}
+                activeTab={activeTab}
+                signals={signals}
+                onActiveTabChange={setActiveTab}
+                onAddPanel={handleAddPanel}
+                onRemovePanel={handleRemovePanel}
+                onAddSignal={handleAddSignalToPanel}
+                onRemoveSignal={handleRemoveSignalFromPanel}
+                onToggleSignalVisibility={toggleSignalVisibility}
+                renderChartDisplay={(panelId) => (
+                  <ChartDisplay
+                    containerRef={containerRef}
+                    chartType={chartType}
+                    visibleChartData={displayedChartData}
+                    zoomDomain={zoomDomain}
+                    signals={getPanelSignals(panelId)}
+                    onBrushChange={handleBrushChange}
+                  />
+                )}
+              />
+            )}
+            
+            {/* Log Sample Display */}
             <LogSample rawLogSample={rawLogSample} />
           </div>
         )}

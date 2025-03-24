@@ -1,7 +1,7 @@
 
 import { toast } from "sonner";
 import { RegexPattern } from "@/components/regex/RegexManager";
-import { LogData, Signal, CHART_COLORS } from "@/types/chartTypes";
+import { LogData, Signal, CHART_COLORS, DataTimeRange, TimeSegment } from "@/types/chartTypes";
 
 export const processLogDataInChunks = (
   content: string,
@@ -13,6 +13,7 @@ export const processLogDataInChunks = (
   setStringValueMap: React.Dispatch<React.SetStateAction<Record<string, Record<string, number>>>>,
   setProcessingStatus: React.Dispatch<React.SetStateAction<string>>,
   setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>,
+  setDataTimeRange: React.Dispatch<React.SetStateAction<DataTimeRange>>,
   formatDataCallback: (data: LogData[], valueMap: Record<string, Record<string, number>>) => void
 ) => {
   // Adaptive chunk size based on device memory
@@ -43,10 +44,12 @@ export const processLogDataInChunks = (
   const parsedData: LogData[] = [];
   const stringValues: Record<string, Set<string>> = {};
   const lastSeenValues: Record<string, number | string> = {};
+  let minTimestamp: Date | null = null;
+  let maxTimestamp: Date | null = null;
   
   const processChunk = () => {
     if (currentChunk >= chunks) {
-      finalizeProcessing(parsedData, stringValues);
+      finalizeProcessing(parsedData, stringValues, minTimestamp, maxTimestamp);
       return;
     }
     
@@ -75,6 +78,14 @@ export const processLogDataInChunks = (
           
           if (isNaN(timestamp.getTime())) {
             return;
+          }
+          
+          // Update min and max timestamps
+          if (!minTimestamp || timestamp < minTimestamp) {
+            minTimestamp = timestamp;
+          }
+          if (!maxTimestamp || timestamp > maxTimestamp) {
+            maxTimestamp = timestamp;
           }
           
           const values: { [key: string]: number | string } = {};
@@ -132,7 +143,7 @@ export const processLogDataInChunks = (
     setTimeout(processChunk, 0);
   };
   
-  const finalizeProcessing = (parsedData: LogData[], stringValues: Record<string, Set<string>>) => {
+  const finalizeProcessing = (parsedData: LogData[], stringValues: Record<string, Set<string>>, minTime: Date | null, maxTime: Date | null) => {
     setProcessingStatus("Finalizing data processing");
     console.log("Finalizing data processing, found", parsedData.length, "data points");
     
@@ -165,11 +176,23 @@ export const processLogDataInChunks = (
         // Set the chart data
         setChartData(parsedData);
         
+        // Set time range for data selection
+        if (minTime && maxTime) {
+          setDataTimeRange({
+            min: minTime,
+            max: maxTime,
+            selected: {
+              start: minTime,
+              end: new Date(Math.min(minTime.getTime() + (15 * 60 * 1000), maxTime.getTime()))
+            }
+          });
+        }
+        
         toast.success(`Found ${parsedData.length.toLocaleString()} data points with the selected patterns`);
         setProcessingStatus("Formatting data for display");
         
-        // Process data in smaller batches for large datasets with better progress indicators
-        formatLargeDatasetInBatches(parsedData, newStringValueMap, formatDataCallback, setProcessingStatus, setIsProcessing);
+        // Format data for display - will be segmented later
+        optimizedFormatChartData(parsedData, newStringValueMap, formatDataCallback, setProcessingStatus, setIsProcessing);
       } catch (error) {
         console.error("Error finalizing data:", error);
         toast.error("Error finalizing data");
@@ -183,99 +206,256 @@ export const processLogDataInChunks = (
   processChunk();
 };
 
-// Helper function for formatting data with better progress updates for very large datasets
-export const formatDataWithProgressUpdates = (
+// Updated data formatting with performance optimizations
+const optimizedFormatChartData = (
   data: LogData[],
   valueMap: Record<string, Record<string, number>>,
   formatDataCallback: (data: LogData[], valueMap: Record<string, Record<string, number>>) => void,
   setProcessingStatus: React.Dispatch<React.SetStateAction<string>>,
   setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>
 ) => {
-  // For very large datasets, show explicit progress to avoid appearing stuck
-  if (data.length > 50000) {
-    toast.info(`Preparing to format ${data.length.toLocaleString()} data points. This may take a moment...`);
-    
-    // For large datasets, use the batched approach for better UI responsiveness
-    formatLargeDatasetInBatches(data, valueMap, formatDataCallback, setProcessingStatus, setIsProcessing);
-  } else {
-    // For smaller datasets, proceed normally
-    console.log("Processing smaller dataset with", data.length, "points");
-    formatDataCallback(data, valueMap);
+  if (data.length === 0) {
+    setIsProcessing(false);
+    setProcessingStatus("");
+    return;
   }
-};
 
-// Improved helper function to format very large datasets in batches with enhanced error handling
-const formatLargeDatasetInBatches = (
-  data: LogData[],
-  valueMap: Record<string, Record<string, number>>,
-  formatDataCallback: (data: LogData[], valueMap: Record<string, Record<string, number>>) => void,
-  setProcessingStatus: React.Dispatch<React.SetStateAction<string>>,
-  setIsProcessing: React.Dispatch<React.SetStateAction<boolean>>
-) => {
-  console.log(`Formatting ${data.length.toLocaleString()} data points in batches for better performance`);
+  setProcessingStatus("Formatting data (0%)");
   
-  // For extremely large datasets, subsample to avoid browser crashes
-  let dataToProcess = data;
-  
-  // Adaptive sampling based on dataset size
-  const getSamplingRate = (size: number) => {
-    if (size > 1000000) return 10;
-    if (size > 500000) return 5;
-    if (size > 200000) return 3;
-    if (size > 125000) return 2;
-    return 1;
+  const getBatchSize = () => {
+    if (data.length > 500000) return 1000;
+    if (data.length > 100000) return 2000;
+    if (data.length > 50000) return 5000;
+    return 10000;
   };
   
-  const samplingRate = getSamplingRate(data.length);
+  const BATCH_SIZE = getBatchSize();
+  const totalBatches = Math.ceil(data.length / BATCH_SIZE);
+  const result: any[] = [];
   
-  // Apply sampling for large datasets
-  if (samplingRate > 1) {
-    dataToProcess = data.filter((_, i) => i % samplingRate === 0);
-    toast.info(`Dataset contains ${data.length.toLocaleString()} points. Sampling at 1:${samplingRate} ratio for better performance.`);
-    console.log(`Large dataset detected. Sampling from ${data.length} to ${dataToProcess.length} points (1:${samplingRate})`);
+  let batchIndex = 0;
+  
+  const processBatch = () => {
+    try {
+      const isLastBatch = batchIndex === totalBatches - 1;
+      
+      const startIdx = batchIndex * BATCH_SIZE;
+      const endIdx = Math.min((batchIndex + 1) * BATCH_SIZE, data.length);
+      
+      for (let i = startIdx; i < endIdx; i++) {
+        const item = data[i];
+        const dataPoint: any = {
+          timestamp: item.timestamp.getTime(),
+        };
+        
+        Object.entries(item.values).forEach(([key, value]) => {
+          if (typeof value === 'string') {
+            if (valueMap[key] && valueMap[key][value] !== undefined) {
+              dataPoint[key] = valueMap[key][value];
+              dataPoint[`${key}_original`] = value;
+            } else {
+              dataPoint[key] = 0;
+            }
+          } else {
+            dataPoint[key] = value;
+          }
+        });
+        
+        result.push(dataPoint);
+      }
+      
+      const progress = Math.round(((batchIndex + 1) / totalBatches) * 100);
+      if (progress < 99 || isLastBatch) {
+        setProcessingStatus(`Formatting data (${progress}%)`);
+      }
+      
+      batchIndex++;
+      
+      if (batchIndex < totalBatches) {
+        setTimeout(processBatch, 0);
+      } else {
+        finalizeBatches();
+      }
+    } catch (error) {
+      console.error("Error in processing batch:", error);
+      setProcessingStatus("Error formatting data. Retrying with smaller batches...");
+      
+      // Try again with a smaller batch size
+      const halfBatchSize = Math.max(100, Math.floor(BATCH_SIZE / 2));
+      retryWithSmallerBatch(data, valueMap, halfBatchSize, result, setProcessingStatus, () => {
+        finalizeBatches();
+      });
+    }
+  };
+  
+  const finalizeBatches = () => {
+    try {
+      formatDataCallback(data, valueMap);
+      setIsProcessing(false);
+      setProcessingStatus("");
+      toast.success("Chart data ready");
+    } catch (error) {
+      console.error("Error in finalizing data:", error);
+      toast.error("Error preparing chart data");
+      setIsProcessing(false);
+      setProcessingStatus("");
+    }
+  };
+  
+  setTimeout(processBatch, 0);
+};
+
+// Utility to retry with smaller batch size for very large datasets
+const retryWithSmallerBatch = (
+  data: LogData[],
+  valueMap: Record<string, Record<string, number>>,
+  batchSize: number,
+  existingResult: any[],
+  setProcessingStatus: React.Dispatch<React.SetStateAction<string>>,
+  onComplete: () => void
+) => {
+  console.log(`Retrying with smaller batch size: ${batchSize}`);
+  
+  const remainingData = data.slice(existingResult.length);
+  const totalBatches = Math.ceil(remainingData.length / batchSize);
+  let batchIndex = 0;
+  
+  const processBatch = () => {
+    try {
+      const startIdx = batchIndex * batchSize;
+      const endIdx = Math.min((batchIndex + 1) * batchSize, remainingData.length);
+      
+      for (let i = startIdx; i < endIdx; i++) {
+        const item = remainingData[i];
+        const dataPoint: any = {
+          timestamp: item.timestamp.getTime(),
+        };
+        
+        Object.entries(item.values).forEach(([key, value]) => {
+          if (typeof value === 'string') {
+            if (valueMap[key] && valueMap[key][value] !== undefined) {
+              dataPoint[key] = valueMap[key][value];
+              dataPoint[`${key}_original`] = value;
+            } else {
+              dataPoint[key] = 0;
+            }
+          } else {
+            dataPoint[key] = value;
+          }
+        });
+        
+        existingResult.push(dataPoint);
+      }
+      
+      const progress = Math.round(((batchIndex + 1) / totalBatches) * 100);
+      setProcessingStatus(`Recovery formatting (${progress}%)`);
+      
+      batchIndex++;
+      
+      if (batchIndex < totalBatches) {
+        setTimeout(processBatch, 0);
+      } else {
+        onComplete();
+      }
+    } catch (error) {
+      console.error("Error in recovery batch processing:", error);
+      
+      // If still failing, try with even smaller batches or skip remaining
+      if (batchSize > 50) {
+        const smallerBatchSize = Math.max(50, Math.floor(batchSize / 2));
+        console.log(`Further reducing batch size to: ${smallerBatchSize}`);
+        retryWithSmallerBatch(
+          data,
+          valueMap,
+          smallerBatchSize,
+          existingResult,
+          setProcessingStatus,
+          onComplete
+        );
+      } else {
+        console.warn("Giving up on processing remaining data, using partial results");
+        onComplete();
+      }
+    }
+  };
+  
+  setTimeout(processBatch, 0);
+};
+
+// New function to segment data into time periods
+export const segmentDataByTime = (
+  data: any[],
+  segmentMinutes: number = 15
+): TimeSegment[] => {
+  if (!data || data.length === 0) return [];
+  
+  // Sort data by timestamp if not already sorted
+  const sortedData = [...data].sort((a, b) => a.timestamp - b.timestamp);
+  
+  const segments: TimeSegment[] = [];
+  const segmentMs = segmentMinutes * 60 * 1000;
+  
+  let currentSegmentStart = sortedData[0].timestamp;
+  let currentSegmentEnd = currentSegmentStart + segmentMs;
+  let currentSegmentData = [];
+  
+  for (const point of sortedData) {
+    if (point.timestamp <= currentSegmentEnd) {
+      currentSegmentData.push(point);
+    } else {
+      // Create segment with accumulated data
+      if (currentSegmentData.length > 0) {
+        segments.push({
+          startTime: new Date(currentSegmentStart),
+          endTime: new Date(currentSegmentEnd),
+          data: currentSegmentData,
+          id: `segment-${segments.length + 1}`
+        });
+      }
+      
+      // Start new segment
+      currentSegmentStart = Math.floor(point.timestamp / segmentMs) * segmentMs;
+      currentSegmentEnd = currentSegmentStart + segmentMs;
+      currentSegmentData = [point];
+    }
   }
   
-  // Update status frequently to show progress
-  const progressInterval = setInterval(() => {
-    setProcessingStatus(prevStatus => {
-      if (prevStatus.includes("Formatting")) {
-        return prevStatus + " (still working...)";
-      }
-      return prevStatus || "Processing dataset...";
+  // Add final segment
+  if (currentSegmentData.length > 0) {
+    segments.push({
+      startTime: new Date(currentSegmentStart),
+      endTime: new Date(currentSegmentEnd),
+      data: currentSegmentData,
+      id: `segment-${segments.length + 1}`
     });
-  }, 2000);
+  }
   
-  // Small delay to let UI update before heavy processing
-  setTimeout(() => {
-    try {
-      // Actual data formatting
-      formatDataCallback(dataToProcess, valueMap);
-    } catch (error) {
-      console.error("Error in data formatting:", error);
-      toast.error("Error formatting chart data. Trying with a smaller dataset...");
-      
-      // On error, try with an even smaller sample
-      if (dataToProcess.length > 10000) {
-        const emergencySamplingRate = 10;
-        const emergencyData = dataToProcess.filter((_, i) => i % emergencySamplingRate === 0);
-        console.log(`Error recovery: Sampling down from ${dataToProcess.length} to ${emergencyData.length} points (1:${emergencySamplingRate})`);
-        
-        setTimeout(() => {
-          try {
-            formatDataCallback(emergencyData, valueMap);
-          } catch (secondError) {
-            console.error("Second error in data formatting:", secondError);
-            toast.error("Could not format chart data");
-            setIsProcessing(false);
-            setProcessingStatus("");
-          }
-        }, 100);
-      } else {
-        setIsProcessing(false);
-        setProcessingStatus("");
-      }
-    } finally {
-      clearInterval(progressInterval);
-    }
-  }, 100);
+  return segments;
+};
+
+// Extract data for a specific time range
+export const extractDataForTimeRange = (
+  data: any[],
+  timeRange: { start: Date, end: Date }
+): any[] => {
+  if (!data || data.length === 0) return [];
+  
+  const startTime = timeRange.start.getTime();
+  const endTime = timeRange.end.getTime();
+  
+  return data.filter(point => {
+    const timestamp = typeof point.timestamp === 'number' 
+      ? point.timestamp 
+      : point.timestamp.getTime();
+    
+    return timestamp >= startTime && timestamp <= endTime;
+  });
+};
+
+// Function to sample data to a manageable size
+export const sampleDataPoints = (data: any[], maxPoints: number = 500): any[] => {
+  if (!data || data.length <= maxPoints) return data;
+  
+  const samplingRate = Math.ceil(data.length / maxPoints);
+  return data.filter((_, idx) => idx % samplingRate === 0);
 };

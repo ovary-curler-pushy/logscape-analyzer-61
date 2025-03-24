@@ -68,14 +68,10 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
     console.log("Brush event data:", brushData);
     
     try {
-      if (!brushData || (!brushData.startIndex && brushData.startIndex !== 0) || (!brushData.endIndex && brushData.endIndex !== 0)) {
+      if (!brushData || typeof brushData.startIndex === 'undefined' || typeof brushData.endIndex === 'undefined') {
         console.log("Invalid brush data received");
         return;
       }
-      
-      // For Recharts, sometimes the startIndex/endIndex can be undefined or null
-      const startIndex = typeof brushData.startIndex === 'number' ? brushData.startIndex : 0;
-      const endIndex = typeof brushData.endIndex === 'number' ? brushData.endIndex : 0;
       
       // Make sure we have data to work with
       if (!visibleChartData || visibleChartData.length === 0) {
@@ -84,8 +80,8 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
       }
       
       // Ensure indices are within bounds
-      const safeStartIndex = Math.max(0, startIndex);
-      const safeEndIndex = Math.min(visibleChartData.length - 1, endIndex);
+      const safeStartIndex = Math.max(0, brushData.startIndex);
+      const safeEndIndex = Math.min(visibleChartData.length - 1, brushData.endIndex);
       
       // Get the actual timestamps from the data
       const startTimestamp = visibleChartData[safeStartIndex]?.timestamp;
@@ -126,6 +122,9 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
   // Set domain values for zoom
   const domainStart = zoomDomain?.start || 'dataMin';
   const domainEnd = zoomDomain?.end || 'dataMax';
+
+  console.log("Rendering chart with type:", chartType);
+  console.log("Visible signals:", signals.length);
 
   return (
     <div className="bg-card border rounded-md p-3 h-[300px]" ref={containerRef}>

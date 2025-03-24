@@ -33,7 +33,7 @@ export interface ChartControlsProps {
     currentPage?: number;
     totalPages?: number;
   };
-  timeNavigation: 'preset' | 'pagination' | 'window';
+  timeNavigation: 'preset' | 'pagination' | 'window' | 'segments';
   timeRangePreset: string;
   timeWindowSize: number;
   customTimeRange: { start?: Date; end?: Date };
@@ -43,6 +43,8 @@ export interface ChartControlsProps {
   formattedChartData: any[];
   currentPage: number;
   isProcessing: boolean;
+  selectedSegment?: string;
+  timeSegments: TimeSegment[];
   onTimeRangePresetChange: (preset: string) => void;
   onTimeWindowSizeChange: (size: number) => void;
   onNavigateTimeWindow: (direction: 'forward' | 'backward') => void;
@@ -50,6 +52,7 @@ export interface ChartControlsProps {
   onMaxPointsChange: (points: number[]) => void;
   onChartTypeChange: (type: 'line' | 'bar') => void;
   onZoomReset: () => void;
+  onSegmentChange?: (segmentId: string) => void;
   renderPaginationControls: () => React.ReactNode;
 }
 
@@ -80,15 +83,49 @@ export interface LogSampleProps {
 }
 
 export interface TimeNavigationControlsProps {
-  timeNavigation: 'preset' | 'pagination' | 'window';
+  timeNavigation: 'preset' | 'pagination' | 'window' | 'segments';
   timeRangePreset: string;
   timeWindowSize: number;
   customTimeRange: { start?: Date; end?: Date };
+  selectedSegment?: string;
+  timeSegments: TimeSegment[];
   onTimeRangePresetChange: (preset: string) => void;
   onTimeWindowSizeChange: (size: number) => void;
   onNavigateTimeWindow: (direction: 'forward' | 'backward') => void;
   onNavigateTime: (direction: 'forward' | 'backward') => void;
+  onSegmentChange?: (segmentId: string) => void;
   isProcessing: boolean;
+}
+
+export interface TimeSegment {
+  id: string;
+  startTime: Date;
+  endTime: Date;
+  data: any[];
+}
+
+export interface DataTimeRange {
+  min: Date;
+  max: Date;
+  selected: {
+    start: Date;
+    end: Date;
+  };
+}
+
+export interface TimeRangeSelectorProps {
+  dataTimeRange: DataTimeRange;
+  onTimeRangeChange: (range: { start: Date; end: Date }) => void;
+  isProcessing: boolean;
+}
+
+export interface SegmentedPanelsProps {
+  timeSegments: TimeSegment[];
+  signals: Signal[];
+  selectedSegment: string;
+  onSegmentChange: (segmentId: string) => void;
+  chartType: 'line' | 'bar';
+  getPanelSignals: (panelId: string) => Signal[];
 }
 
 export const CHART_COLORS = [
