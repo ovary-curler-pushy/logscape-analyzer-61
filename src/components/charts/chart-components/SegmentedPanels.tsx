@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import RechartsDisplay from './RechartsDisplay';
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
 
 const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   timeSegments,
@@ -17,29 +17,15 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   chartType,
   getPanelSignals
 }) => {
-  const [zoomDomain, setZoomDomain] = useState<{ start?: number, end?: number }>({});
+  const [zoomMode, setZoomMode] = useState<'all' | 'custom'>('all');
+  const [zoomRange, setZoomRange] = useState<{ start: number | null, end: number | null }>({ start: null, end: null });
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Reset zoom domain when segment changes to show full segment
+  // Reset zoom when segment changes
   useEffect(() => {
-    setZoomDomain({});
+    setZoomMode('all');
+    setZoomRange({ start: null, end: null });
   }, [selectedSegment]);
-
-  // Handle zoom domain changes
-  const handleZoomDomainChange = (domain: any) => {
-    if (!domain || (domain.start === 'dataMin' && domain.end === 'dataMax')) {
-      setZoomDomain({});
-    } else {
-      setZoomDomain(domain);
-      toast.info(`Zoomed to selected time range`);
-    }
-  };
-
-  // Handle brush change
-  const handleBrushChange = (brushData: any) => {
-    console.log("Brush data:", brushData);
-    // This only tracks the brush activity
-  };
 
   // Handle segment navigation
   const navigateSegment = (direction: 'next' | 'previous') => {
@@ -55,6 +41,28 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
     
     onSegmentChange(timeSegments[newIndex].id);
     toast.info(`Moved to ${direction} segment`);
+  };
+
+  // Handle zoom selection from brush
+  const handleBrushSelection = (brushData: any) => {
+    if (!brushData || !brushData.startValue || !brushData.endValue) {
+      return;
+    }
+
+    setZoomMode('custom');
+    setZoomRange({
+      start: brushData.startValue,
+      end: brushData.endValue
+    });
+    
+    toast.info('Zoomed to selected range');
+  };
+
+  // Reset zoom to show all data
+  const handleResetZoom = () => {
+    setZoomMode('all');
+    setZoomRange({ start: null, end: null });
+    toast.info('Reset zoom to show all data');
   };
 
   if (timeSegments.length === 0) {
@@ -136,12 +144,19 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
                 </>
               )}
             </div>
-            <button 
-              onClick={() => setZoomDomain({})}
-              className="text-xs text-primary hover:text-primary/80 underline"
-            >
-              Reset Zoom
-            </button>
+            <div className="flex items-center gap-2">
+              {zoomMode === 'custom' && (
+                <Button 
+                  variant="outline"
+                  size="sm"
+                  onClick={handleResetZoom}
+                  className="text-xs flex items-center gap-1"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                  Reset Zoom
+                </Button>
+              )}
+            </div>
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -150,10 +165,10 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
               chartType={chartType}
               visibleChartData={selectedSegmentData}
               signals={panelSignals}
-              zoomDomain={zoomDomain}
-              onZoomDomainChange={handleZoomDomainChange}
+              zoomMode={zoomMode}
+              zoomRange={zoomRange}
+              onBrushChange={handleBrushSelection}
               containerRef={containerRef}
-              onBrushChange={handleBrushChange}
             />
           </div>
         </CardContent>

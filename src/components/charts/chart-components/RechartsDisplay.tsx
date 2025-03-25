@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
-  Legend, ResponsiveContainer, Brush, BarChart, Bar
+  Legend, ResponsiveContainer, Brush, BarChart, Bar,
+  ReferenceArea
 } from 'recharts';
 import { ChartDisplayProps } from '@/types/chartTypes';
 import { toast } from 'sonner';
@@ -27,13 +29,20 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   return null;
 };
 
+type ZoomBrushState = {
+  startIndex: number | null;
+  endIndex: number | null;
+  refAreaLeft: number | null;
+  refAreaRight: number | null;
+};
+
 const RechartsDisplay: React.FC<ChartDisplayProps> = ({
   containerRef,
   chartType,
   visibleChartData,
-  zoomDomain,
   signals,
-  onZoomDomainChange,
+  zoomMode,
+  zoomRange,
   onBrushChange
 }) => {
   // Sample data to reduce the number of points displayed for better performance
@@ -81,22 +90,23 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     }
   };
 
-  // Handle brush change (improved version for zooming)
+  // Handle brush change for zoom selection
   const handleBrushChange = (event: any) => {
-    if (!event || !onBrushChange) return;
+    if (!event || !onBrushChange || !sampledData) return;
     
     const { startIndex, endIndex } = event;
     if (startIndex === undefined || endIndex === undefined || !sampledData.length) return;
     
-    const start = sampledData[startIndex]?.timestamp;
-    const end = sampledData[endIndex]?.timestamp;
+    const startValue = sampledData[startIndex]?.timestamp;
+    const endValue = sampledData[endIndex]?.timestamp;
     
-    if (start && end) {
-      onBrushChange(event);
-      
-      if (onZoomDomainChange) {
-        onZoomDomainChange({ start, end });
-      }
+    if (startValue && endValue) {
+      onBrushChange({
+        startIndex,
+        endIndex,
+        startValue,
+        endValue
+      });
     }
   };
 
@@ -109,10 +119,9 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     );
   }
 
-  // For zoom domain, only apply if it's specifically set
-  // Otherwise use dataMin/dataMax to show all data points
-  const domainStart = zoomDomain?.start ? zoomDomain.start : 'dataMin';
-  const domainEnd = zoomDomain?.end ? zoomDomain.end : 'dataMax';
+  // Determine domain for X axis based on zoom mode
+  const domainStart = zoomMode === 'custom' && zoomRange.start ? zoomRange.start : 'dataMin';
+  const domainEnd = zoomMode === 'custom' && zoomRange.end ? zoomRange.end : 'dataMax';
 
   return (
     <ResponsiveContainer width="100%" height="100%">

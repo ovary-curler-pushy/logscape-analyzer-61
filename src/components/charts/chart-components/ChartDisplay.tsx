@@ -1,5 +1,5 @@
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, 
   Legend, ResponsiveContainer, Brush, BarChart, Bar
@@ -32,13 +32,15 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
   containerRef,
   chartType,
   visibleChartData,
-  zoomDomain,
   signals,
+  zoomMode = 'all',
+  zoomRange = { start: null, end: null },
   onBrushChange
 }) => {
   const [chartWidth, setChartWidth] = useState<number>(0);
   const [chartHeight, setChartHeight] = useState<number>(0);
 
+  // Track chart container dimensions
   useEffect(() => {
     if (containerRef.current) {
       const resizeObserver = new ResizeObserver(entries => {
@@ -68,17 +70,15 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
     }
   };
 
-  // Improved brush change handler with better error handling
+  // Improved brush change handler
   const handleBrushChange = (brushData: any) => {
-    if (!brushData || !visibleChartData || visibleChartData.length === 0) {
-      console.log("Invalid brush data or no chart data available");
+    if (!brushData || !visibleChartData || visibleChartData.length === 0 || !onBrushChange) {
       return;
     }
     
     try {
       // Ensure we have start and end indices
       if (typeof brushData.startIndex === 'undefined' || typeof brushData.endIndex === 'undefined') {
-        console.log("Missing brush indices");
         return;
       }
       
@@ -87,7 +87,6 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
       const safeEndIndex = Math.max(0, Math.min(visibleChartData.length - 1, brushData.endIndex));
       
       if (safeStartIndex === safeEndIndex) {
-        console.log("Start and end indices are the same, can't zoom");
         return;
       }
       
@@ -97,11 +96,8 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
       
       // Verify timestamps
       if (startTimestamp === undefined || endTimestamp === undefined) {
-        console.log("Invalid timestamps in data");
         return;
       }
-      
-      console.log(`Zooming to time range: ${new Date(startTimestamp).toISOString()} - ${new Date(endTimestamp).toISOString()}`);
       
       // Call parent's onBrushChange with valid data
       onBrushChange({
@@ -110,11 +106,8 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
         startValue: startTimestamp,
         endValue: endTimestamp
       });
-      
-      toast.info(`Zoomed to selected time range: ${new Date(startTimestamp).toLocaleTimeString()} - ${new Date(endTimestamp).toLocaleTimeString()}`);
     } catch (error) {
       console.error("Error in brush change handler:", error);
-      toast.error("Failed to apply zoom");
     }
   };
 
@@ -127,12 +120,9 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
     );
   }
 
-  // Set domain values for zoom
-  const domainStart = zoomDomain?.start || 'dataMin';
-  const domainEnd = zoomDomain?.end || 'dataMax';
-
-  console.log(`Rendering ${chartType} chart with ${signals.length} signals and ${visibleChartData.length} data points`);
-  console.log("Current zoom domain:", zoomDomain);
+  // Set domain values for zoom - default to showing all data
+  const domainStart = zoomMode === 'custom' && zoomRange.start ? zoomRange.start : 'dataMin';
+  const domainEnd = zoomMode === 'custom' && zoomRange.end ? zoomRange.end : 'dataMax';
 
   return (
     <div className="bg-card border rounded-md p-3 h-[300px]" ref={containerRef}>
