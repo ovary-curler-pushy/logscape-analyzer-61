@@ -74,6 +74,15 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     }
   }, []);
 
+  // Reset zoom - Must be defined before it's used
+  const handleZoomReset = useCallback(() => {
+    setZoomDomain(null);
+    setIsZoomed(false);
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+    if (onZoomReset) onZoomReset();
+  }, [onZoomReset]);
+
   // Handle mouse down for zoom selection
   const handleMouseDown = useCallback((e: any) => {
     if (!e || !e.activeLabel) return;
@@ -111,15 +120,6 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
       });
     }
   }, [refAreaLeft, refAreaRight, handleZoomReset]);
-
-  // Reset zoom
-  const handleZoomReset = useCallback(() => {
-    setZoomDomain(null);
-    setIsZoomed(false);
-    setRefAreaLeft(null);
-    setRefAreaRight(null);
-    if (onZoomReset) onZoomReset();
-  }, [onZoomReset]);
 
   // Handle brush change with debounce
   const handleBrushChange = useCallback((brushData: any) => {
