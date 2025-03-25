@@ -33,11 +33,13 @@ const CustomTooltip = React.memo(({ active, payload, label }: any) => {
             <div key={`tooltip-${index}`} className="flex items-center gap-2 py-0.5">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
               <span className="font-medium">{entry.name}:</span>
-              <span>
-                {hasOriginalValue 
-                  ? `${entry.payload[originalKey]} (${entry.value})` 
-                  : entry.value}
-              </span>
+              {hasOriginalValue ? (
+                <span>
+                  {entry.payload[originalKey]} ({entry.value.toFixed(1)})
+                </span>
+              ) : (
+                <span>{typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}</span>
+              )}
             </div>
           );
         })}
