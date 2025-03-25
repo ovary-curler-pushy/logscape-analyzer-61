@@ -1,11 +1,10 @@
 
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { FileText, Wand, RefreshCcw } from "lucide-react";
+import { FileText } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import RechartsDisplay from "./chart-components/RechartsDisplay";
 import PanelTabsManager from "./chart-components/PanelTabsManager";
 import SegmentedPanels from "./chart-components/SegmentedPanels";
@@ -26,7 +25,6 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
-  const [zoomDomain, setZoomDomain] = useState<any>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Initialize the panels when signals change
@@ -81,8 +79,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       });
 
       console.log("Total data points:", sortedData.length);
-      console.log("First sorted data point:", sortedData[0]);
-
+      
       // Process data to flattened format for chart
       const processedData = sortedData.map(item => {
         const timestamp = item.timestamp instanceof Date 
@@ -112,8 +109,6 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
         return result;
       });
 
-      console.log("Sample processed data:", processedData.slice(0, 5));
-
       // Create time segments based on POINTS_PER_PANEL
       const segments: TimeSegment[] = [];
       
@@ -135,8 +130,6 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       }
       
       console.log(`Created ${segments.length} segments with ${POINTS_PER_PANEL} points per segment`);
-      console.log("First segment points:", segments[0]?.data?.length);
-      console.log("First data point in first segment:", segments[0]?.data?.[0]);
       
       toast.success(`Data divided into ${segments.length} segments`);
     } catch (error) {
@@ -204,22 +197,10 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     );
   }, []);
 
-  // Handle zoom domain changes
-  const handleZoomDomainChange = useCallback((domain: any) => {
-    setZoomDomain(domain);
-    console.log('Zoom domain changed:', domain);
-  }, []);
-
   // Handle chart type changes
   const handleChartTypeChange = useCallback((type: 'line' | 'bar') => {
     setChartType(type);
     toast.info(`Switched to ${type} chart view`);
-  }, []);
-
-  // Reset zoom to default
-  const handleResetZoom = useCallback(() => {
-    setZoomDomain(null);
-    toast.info("Zoom reset to default view");
   }, []);
 
   // Get the visible signals for a specific panel
@@ -231,10 +212,9 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       .filter(signal => panel.signals.includes(signal.id) && signal.visible);
   }, [signals, panels]);
   
-  // Handle brush change
-  const handleBrushChange = useCallback((brushData: any) => {
-    console.log('Brush change detected:', brushData);
-    // This will be connected to the domain change function
+  // Handle zoom reset
+  const handleZoomReset = useCallback(() => {
+    toast.info("Zoom reset to default view");
   }, []);
   
   // Render chart display for a specific panel
@@ -250,14 +230,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
           chartType={chartType}
           visibleChartData={currentSegment.data}
           signals={panelSignals}
-          zoomDomain={zoomDomain}
-          onZoomDomainChange={handleZoomDomainChange}
-          onBrushChange={handleBrushChange}
           containerRef={containerRef}
+          onZoomReset={handleZoomReset}
         />
       </div>
     );
-  }, [timeSegments, selectedSegment, getPanelSignals, chartType, zoomDomain, handleZoomDomainChange, handleBrushChange]);
+  }, [timeSegments, selectedSegment, getPanelSignals, chartType, handleZoomReset]);
 
   // View mode toggle
   const handleViewModeChange = useCallback((mode: 'panels' | 'segments') => {
@@ -292,16 +270,6 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
                 <TabsTrigger value="segments" className="text-xs px-2">Time Segments</TabsTrigger>
               </TabsList>
             </Tabs>
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={handleResetZoom}
-              disabled={!zoomDomain}
-            >
-              <RefreshCcw className="h-4 w-4 mr-1" />
-              Reset Zoom
-            </Button>
 
             <Button
               variant="outline"

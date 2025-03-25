@@ -73,12 +73,12 @@ export interface ChartDisplayProps {
   containerRef?: React.RefObject<HTMLDivElement>;
   chartType: 'line' | 'bar';
   visibleChartData: any[];
-  zoomDomain?: { start?: number; end?: number };
   signals: Signal[];
   onZoomDomainChange?: (domain: any) => void;
   onBrushChange?: (brushData: any) => void;
-  zoomMode?: 'all' | 'custom';
-  zoomRange?: { start: number | null; end: number | null };
+  zoomed?: boolean;
+  zoomRange?: [number, number] | null;
+  onZoomReset?: () => void;
 }
 
 export interface LogSampleProps {

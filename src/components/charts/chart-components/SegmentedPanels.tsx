@@ -7,7 +7,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from 'sonner';
 import RechartsDisplay from './RechartsDisplay';
 import { Button } from "@/components/ui/button";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 
 const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   timeSegments,
@@ -17,15 +17,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   chartType,
   getPanelSignals
 }) => {
-  const [zoomMode, setZoomMode] = useState<'all' | 'custom'>('all');
-  const [zoomRange, setZoomRange] = useState<{ start: number | null, end: number | null }>({ start: null, end: null });
   const containerRef = useRef<HTMLDivElement>(null);
-
-  // Reset zoom when segment changes
-  useEffect(() => {
-    setZoomMode('all');
-    setZoomRange({ start: null, end: null });
-  }, [selectedSegment]);
 
   // Handle segment navigation
   const navigateSegment = (direction: 'next' | 'previous') => {
@@ -41,28 +33,6 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
     
     onSegmentChange(timeSegments[newIndex].id);
     toast.info(`Moved to ${direction} segment`);
-  };
-
-  // Handle zoom selection from brush
-  const handleBrushSelection = (brushData: any) => {
-    if (!brushData || !brushData.startValue || !brushData.endValue) {
-      return;
-    }
-
-    setZoomMode('custom');
-    setZoomRange({
-      start: brushData.startValue,
-      end: brushData.endValue
-    });
-    
-    toast.info('Zoomed to selected range');
-  };
-
-  // Reset zoom to show all data
-  const handleResetZoom = () => {
-    setZoomMode('all');
-    setZoomRange({ start: null, end: null });
-    toast.info('Reset zoom to show all data');
   };
 
   if (timeSegments.length === 0) {
@@ -81,6 +51,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
 
   // Find current segment index for navigation
   const currentSegmentIndex = timeSegments.findIndex(s => s.id === selectedSegment);
+  const currentSegment = timeSegments[currentSegmentIndex];
 
   return (
     <div className="space-y-4">
@@ -95,7 +66,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
                   value={segment.id}
                   className="text-xs py-1 px-2 h-auto whitespace-nowrap"
                 >
-                  {format(segment.startTime, 'HH:mm:ss')} - {format(segment.endTime, 'HH:mm:ss')} 
+                  {format(new Date(segment.startTime), 'HH:mm:ss')} - {format(new Date(segment.endTime), 'HH:mm:ss')} 
                   <span className="text-xs text-muted-foreground ml-1">({segment.data.length} points)</span>
                 </TabsTrigger>
               ))}
@@ -136,27 +107,12 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
       {/* Segment chart display */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center justify-between">
-            <div>
-              {timeSegments.find(s => s.id === selectedSegment) && (
-                <>
-                  Time Segment: {format(timeSegments.find(s => s.id === selectedSegment)!.startTime, 'HH:mm:ss')} - {format(timeSegments.find(s => s.id === selectedSegment)!.endTime, 'HH:mm:ss')}
-                </>
-              )}
-            </div>
-            <div className="flex items-center gap-2">
-              {zoomMode === 'custom' && (
-                <Button 
-                  variant="outline"
-                  size="sm"
-                  onClick={handleResetZoom}
-                  className="text-xs flex items-center gap-1"
-                >
-                  <RefreshCw className="h-3 w-3" />
-                  Reset Zoom
-                </Button>
-              )}
-            </div>
+          <CardTitle className="text-base">
+            {currentSegment && (
+              <>
+                Time Segment: {format(new Date(currentSegment.startTime), 'HH:mm:ss.SSS')} - {format(new Date(currentSegment.endTime), 'HH:mm:ss.SSS')}
+              </>
+            )}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -165,10 +121,10 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
               chartType={chartType}
               visibleChartData={selectedSegmentData}
               signals={panelSignals}
-              zoomMode={zoomMode}
-              zoomRange={zoomRange}
-              onBrushChange={handleBrushSelection}
               containerRef={containerRef}
+              onZoomReset={() => {
+                toast.info("Reset zoom on segment");
+              }}
             />
           </div>
         </CardContent>
