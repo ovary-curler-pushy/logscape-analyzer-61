@@ -1,4 +1,3 @@
-
 import { toast } from "sonner";
 import { RegexPattern } from "@/components/regex/RegexManager";
 import { LogData, Signal, CHART_COLORS, DataTimeRange, TimeSegment } from "@/types/chartTypes";

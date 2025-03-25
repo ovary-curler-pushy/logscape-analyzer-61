@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -60,6 +61,15 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
   const [isZoomed, setIsZoomed] = useState(false);
   const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
 
+  // Reset zoom - Define this before it's used in handleMouseUp
+  const handleZoomReset = useCallback(() => {
+    setZoomDomain(null);
+    setIsZoomed(false);
+    setRefAreaLeft(null);
+    setRefAreaRight(null);
+    if (onZoomReset) onZoomReset();
+  }, [onZoomReset]);
+
   // Sample the data based on the sampling factor
   const sampledData = useMemo(() => {
     if (!visibleChartData || visibleChartData.length === 0) return [];
@@ -79,15 +89,6 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
       return '';
     }
   }, []);
-
-  // Reset zoom - Must be defined before it's used
-  const handleZoomReset = useCallback(() => {
-    setZoomDomain(null);
-    setIsZoomed(false);
-    setRefAreaLeft(null);
-    setRefAreaRight(null);
-    if (onZoomReset) onZoomReset();
-  }, [onZoomReset]);
 
   // Handle mouse down for zoom selection
   const handleMouseDown = useCallback((e: any) => {
