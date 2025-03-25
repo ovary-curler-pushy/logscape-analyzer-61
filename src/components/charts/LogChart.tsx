@@ -231,6 +231,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       .filter(signal => panel.signals.includes(signal.id) && signal.visible);
   }, [signals, panels]);
   
+  // Handle brush change
+  const handleBrushChange = useCallback((brushData: any) => {
+    console.log('Brush change detected:', brushData);
+    // This will be connected to the domain change function
+  }, []);
+  
   // Render chart display for a specific panel
   const renderPanelChartDisplay = useCallback((panelId: string) => {
     const currentSegment = timeSegments.find(s => s.id === selectedSegment);
@@ -246,11 +252,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
           signals={panelSignals}
           zoomDomain={zoomDomain}
           onZoomDomainChange={handleZoomDomainChange}
+          onBrushChange={handleBrushChange}
           containerRef={containerRef}
         />
       </div>
     );
-  }, [timeSegments, selectedSegment, getPanelSignals, chartType, zoomDomain, handleZoomDomainChange]);
+  }, [timeSegments, selectedSegment, getPanelSignals, chartType, zoomDomain, handleZoomDomainChange, handleBrushChange]);
 
   // View mode toggle
   const handleViewModeChange = useCallback((mode: 'panels' | 'segments') => {

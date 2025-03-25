@@ -6,6 +6,7 @@ import {
 } from 'recharts';
 import { ChartDisplayProps } from '@/types/chartTypes';
 import { toast } from 'sonner';
+import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 // Custom tooltip component for charts
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -34,7 +35,8 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
   visibleChartData,
   zoomDomain,
   signals,
-  onZoomDomainChange
+  onZoomDomainChange,
+  onBrushChange
 }) => {
   // Sample data to reduce the number of points displayed for better performance
   const [sampledData, setSampledData] = useState<any[]>([]);
@@ -83,20 +85,26 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
 
   // Handle brush change (zoom)
   const handleBrushChange = (brushData: any) => {
-    if (!brushData || !brushData.startIndex || !brushData.endIndex) return;
+    if (!brushData || !onBrushChange) return;
     
     try {
-      if (sampledData && sampledData.length > 0) {
-        const startIndex = Math.max(0, brushData.startIndex);
-        const endIndex = Math.min(sampledData.length - 1, brushData.endIndex);
-        
-        if (startIndex >= endIndex) return;
-        
-        const start = sampledData[startIndex].timestamp;
-        const end = sampledData[endIndex].timestamp;
-        
-        if (onZoomDomainChange) {
-          onZoomDomainChange({ start, end });
+      // Make sure we have valid brush data with indices
+      if (brushData.startIndex !== undefined && brushData.endIndex !== undefined) {
+        if (sampledData && sampledData.length > 0) {
+          const startIndex = Math.max(0, brushData.startIndex);
+          const endIndex = Math.min(sampledData.length - 1, brushData.endIndex);
+          
+          if (startIndex >= endIndex) return;
+          
+          const start = sampledData[startIndex].timestamp;
+          const end = sampledData[endIndex].timestamp;
+          
+          // Pass the brush data to parent component
+          onBrushChange(brushData);
+          
+          if (onZoomDomainChange) {
+            onZoomDomainChange({ start, end });
+          }
         }
       }
     } catch (error) {
@@ -113,7 +121,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     );
   }
 
-  // Set domain values for zoom if provided
+  // Set domain values for zoom if provided, otherwise show all data
   const domainStart = zoomDomain?.start || undefined;
   const domainEnd = zoomDomain?.end || undefined;
 
@@ -154,8 +162,10 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             height={30} 
             stroke="#8884d8"
             onChange={handleBrushChange}
+            travellerWidth={10}
             startIndex={0}
-            endIndex={Math.min(50, sampledData.length - 1)}
+            endIndex={Math.min(200, sampledData.length - 1)}
+            gap={1}
           />
         </LineChart>
       ) : (
@@ -188,8 +198,10 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             height={30} 
             stroke="#8884d8"
             onChange={handleBrushChange}
+            travellerWidth={10}
             startIndex={0}
-            endIndex={Math.min(50, sampledData.length - 1)}
+            endIndex={Math.min(200, sampledData.length - 1)}
+            gap={1}
           />
         </BarChart>
       )}
