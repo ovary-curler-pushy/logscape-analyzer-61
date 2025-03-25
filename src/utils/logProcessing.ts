@@ -43,6 +43,7 @@ export const processLogDataInChunks = (
   let currentChunk = 0;
   const parsedData: LogData[] = [];
   const stringValues: Record<string, Set<string>> = {};
+  const stringValueMaps: Record<string, Record<string, number>> = {};
   const lastSeenValues: Record<string, number | string> = {};
   let minTimestamp: Date | null = null;
   let maxTimestamp: Date | null = null;
@@ -65,6 +66,26 @@ export const processLogDataInChunks = (
   
   const processChunk = () => {
     if (currentChunk >= chunks) {
+      // Create numeric mappings for string values
+      for (const [signalName, valueSet] of Object.entries(stringValues)) {
+        if (!stringValueMaps[signalName]) {
+          stringValueMaps[signalName] = {};
+        }
+        
+        // Create a sorted array of unique string values
+        const uniqueValues = Array.from(valueSet).sort();
+        
+        // Map each unique string value to a numeric index
+        uniqueValues.forEach((value, index) => {
+          stringValueMaps[signalName][value] = index;
+        });
+        
+        console.log(`Created mapping for ${signalName}:`, stringValueMaps[signalName]);
+      }
+      
+      // Update the string value map state
+      setStringValueMap(stringValueMaps);
+      
       finalizeProcessing(parsedData);
       return;
     }
@@ -119,6 +140,7 @@ export const processLogDataInChunks = (
                 lastSeenValues[pattern.name] = value;
                 hasNewValue = true;
                 
+                // Track string values for later mapping
                 if (typeof value === 'string') {
                   if (!stringValues[pattern.name]) {
                     stringValues[pattern.name] = new Set<string>();
@@ -185,6 +207,20 @@ export const processLogDataInChunks = (
 
   // Start processing
   processChunk();
+};
+
+// Helper function to map string values to their numeric equivalents based on the mapping
+export const mapStringValueToNumber = (
+  signalName: string, 
+  stringValue: string, 
+  stringValueMap: Record<string, Record<string, number>>
+): number => {
+  if (!stringValueMap || !stringValueMap[signalName] || !(stringValue in stringValueMap[signalName])) {
+    // Return default value if mapping doesn't exist
+    return 0;
+  }
+  
+  return stringValueMap[signalName][stringValue];
 };
 
 export const extractDataForTimeRange = (data: any[], range: { start: Date, end: Date }): any[] => {

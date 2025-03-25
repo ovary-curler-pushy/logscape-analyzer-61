@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -24,15 +23,22 @@ const CustomTooltip = React.memo(({ active, payload, label }: any) => {
     return (
       <div className="p-2 bg-white dark:bg-slate-800 shadow-md border rounded-md text-xs">
         <p className="font-medium mb-1">{formattedTime}</p>
-        {payload.map((entry: any, index: number) => (
-          <div key={`tooltip-${index}`} className="flex items-center gap-2 py-0.5">
-            <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
-            <span className="font-medium">{entry.name}:</span>
-            <span>{typeof entry.payload[`${entry.name}_original`] === 'string' 
-              ? entry.payload[`${entry.name}_original`] 
-              : entry.value}</span>
-          </div>
-        ))}
+        {payload.map((entry: any, index: number) => {
+          const originalKey = `${entry.name}_original`;
+          const hasOriginalValue = entry.payload && originalKey in entry.payload;
+          
+          return (
+            <div key={`tooltip-${index}`} className="flex items-center gap-2 py-0.5">
+              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
+              <span className="font-medium">{entry.name}:</span>
+              <span>
+                {hasOriginalValue 
+                  ? `${entry.payload[originalKey]} (${entry.value})` 
+                  : entry.value}
+              </span>
+            </div>
+          );
+        })}
       </div>
     );
   }

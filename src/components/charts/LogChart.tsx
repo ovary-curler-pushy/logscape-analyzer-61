@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
@@ -9,7 +8,7 @@ import RechartsDisplay from "./chart-components/RechartsDisplay";
 import PanelTabsManager from "./chart-components/PanelTabsManager";
 import SegmentedPanels from "./chart-components/SegmentedPanels";
 import { LogChartProps, Signal, ChartPanel, TimeSegment, CHART_COLORS } from '@/types/chartTypes';
-import { processLogDataInChunks } from '@/utils/logProcessing';
+import { processLogDataInChunks, mapStringValueToNumber } from '@/utils/logProcessing';
 
 const POINTS_PER_PANEL = 5000;
 
@@ -25,6 +24,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
+  const [stringValueMap, setStringValueMap] = useState<Record<string, Record<string, number>>>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
   // Initialize the panels when signals change
@@ -53,8 +53,8 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       setRawChartData,
       () => {},  // Removed formatted chart data setter
       setSignals,
-      () => {},  // Removed panels setter
-      () => {},  // Removed string value map setter
+      setPanels,
+      setStringValueMap,
       setProcessingStatus,
       setIsProcessing,
       () => {},  // Removed time range setter
@@ -93,16 +93,10 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
           if (typeof value === 'number') {
             result[key] = value;
           } else if (typeof value === 'string') {
-            // Try to convert to number if possible
-            const numValue = parseFloat(value as string);
-            if (!isNaN(numValue)) {
-              result[key] = numValue;
-              result[`${key}_original`] = value; // Keep original string value
-            } else {
-              // For string values, we'll try to map them to numbers for charting
-              result[key] = 1; // Default value for string appearance
-              result[`${key}_original`] = value; // Keep original string value
-            }
+            // Apply string value mapping
+            const numValue = mapStringValueToNumber(key, value, stringValueMap);
+            result[key] = numValue;
+            result[`${key}_original`] = value; // Keep original string value
           }
         });
         
@@ -138,7 +132,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     }
 
     setIsProcessing(false);
-  }, []);
+  }, [stringValueMap]);
 
   // Panel management functions
   const handleAddPanel = useCallback(() => {
