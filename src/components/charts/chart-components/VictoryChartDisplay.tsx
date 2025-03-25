@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React from 'react';
 import {
   VictoryChart,
   VictoryLine,
@@ -8,7 +8,6 @@ import {
   VictoryTooltip,
   VictoryLegend,
   VictoryScatter,
-  VictoryZoomContainer,
   VictoryVoronoiContainer
 } from 'victory';
 import { ChartDisplayProps } from '@/types/chartTypes';
@@ -20,16 +19,7 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
   signals,
   onZoomDomainChange
 }) => {
-  const [zoomDomain, setZoomDomain] = useState<{ x?: [number, number]; y?: [number, number] }>();
-
-  const handleZoomDomainChange = (domain: { x: [number, number]; y: [number, number] }) => {
-    setZoomDomain(domain);
-    if (onZoomDomainChange) {
-      onZoomDomainChange(domain);
-    }
-  };
-
-  // Sample data to reduce the number of points displayed
+  // Sample data to reduce the number of points displayed for better performance
   const sampleChartData = () => {
     if (!visibleChartData || visibleChartData.length === 0) return [];
     
@@ -58,7 +48,7 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
   }
 
   return (
-    <div className="relative h-[300px] w-full bg-card">
+    <div className="h-[300px] w-full bg-card">
       <VictoryChart
         width={800}
         height={300}
@@ -103,7 +93,7 @@ const VictoryChartDisplay: React.FC<ChartDisplayProps> = ({
         
         {signals.map((signal) => {
           const data = sampledData.map(point => ({
-            timestamp: point.timestamp,
+            timestamp: typeof point.timestamp === 'number' ? point.timestamp : new Date(point.timestamp).getTime(),
             y: point[signal.name],
             _original: point[`${signal.name}_original`],
             seriesName: signal.name

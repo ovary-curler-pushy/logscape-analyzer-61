@@ -1,13 +1,13 @@
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { FileText, Wand, RefreshCcw, ZoomIn } from "lucide-react";
+import { FileText, Wand, RefreshCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import VictoryChartDisplay from "./chart-components/VictoryChartDisplay";
-import { LogChartProps } from '@/types/chartTypes';
+import { LogChartProps, TimeSegment } from '@/types/chartTypes';
 import { processLogDataInChunks } from '@/utils/logProcessing';
 
 const POINTS_PER_PANEL = 5000;
@@ -16,8 +16,8 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   // Basic states
   const [rawChartData, setRawChartData] = useState<any[]>([]);
   const [signals, setSignals] = useState<any[]>([]);
-  const [panels, setPanels] = useState<any[]>([]);
-  const [activePanel, setActivePanel] = useState<string>("0");
+  const [timeSegments, setTimeSegments] = useState<TimeSegment[]>([]);
+  const [selectedSegment, setSelectedSegment] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
@@ -29,7 +29,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
 
     setIsProcessing(true);
     setRawChartData([]);
-    setPanels([]);
+    setTimeSegments([]);
     
     processLogDataInChunks(
       logContent,
@@ -46,7 +46,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     );
   }, [logContent, patterns]);
 
-  // Format and segment data
+  // Format and segment data into time segments
   const formatDataCallback = useCallback((data: any[]) => {
     if (!data.length) {
       setIsProcessing(false);
@@ -66,11 +66,11 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
 
       // Process data to flattened format for chart
       const processedData = sortedData.map(item => {
-        const result: any = {
-          timestamp: item.timestamp instanceof Date 
-            ? item.timestamp.getTime() // Convert Date object to number for Victory
-            : new Date(item.timestamp).getTime() // Convert string date to number
-        };
+        const timestamp = item.timestamp instanceof Date 
+          ? item.timestamp.getTime() // Convert Date object to number for Victory
+          : new Date(item.timestamp).getTime(); // Convert string date to number
+        
+        const result: any = { timestamp };
         
         // Flatten values from the values object
         Object.entries(item.values || {}).forEach(([key, value]) => {
@@ -93,29 +93,31 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
         return result;
       });
 
-      // Create panels based on data points count
-      const totalPanels = Math.ceil(processedData.length / POINTS_PER_PANEL);
-      const newPanels = Array.from({ length: totalPanels }, (_, index) => {
-        const start = index * POINTS_PER_PANEL;
-        const end = Math.min((index + 1) * POINTS_PER_PANEL, processedData.length);
-        return {
-          id: index.toString(),
-          data: processedData.slice(start, end),
-          range: {
-            start: new Date(processedData[start].timestamp),
-            end: new Date(processedData[end - 1].timestamp)
-          }
-        };
-      });
-
-      console.log(`Created ${newPanels.length} panels with ${POINTS_PER_PANEL} points each`);
-      console.log("First panel data points:", newPanels[0]?.data?.length);
-      console.log("First data point in first panel:", newPanels[0]?.data?.[0]);
+      // Create time segments based on POINTS_PER_PANEL
+      const segments: TimeSegment[] = [];
       
-      setPanels(newPanels);
-      setActivePanel("0");
+      for (let i = 0; i < processedData.length; i += POINTS_PER_PANEL) {
+        const segmentData = processedData.slice(i, i + POINTS_PER_PANEL);
+        if (segmentData.length > 0) {
+          segments.push({
+            id: `segment-${i / POINTS_PER_PANEL}`,
+            startTime: new Date(segmentData[0].timestamp),
+            endTime: new Date(segmentData[segmentData.length - 1].timestamp),
+            data: segmentData
+          });
+        }
+      }
       
-      toast.success(`Data divided into ${newPanels.length} panels`);
+      setTimeSegments(segments);
+      if (segments.length > 0) {
+        setSelectedSegment(segments[0].id);
+      }
+      
+      console.log(`Created ${segments.length} segments with ${POINTS_PER_PANEL} points per segment`);
+      console.log("First segment points:", segments[0]?.data?.length);
+      console.log("First data point:", segments[0]?.data?.[0]);
+      
+      toast.success(`Data divided into ${segments.length} segments`);
     } catch (error) {
       console.error('Error formatting data:', error);
       toast.error('Error preparing chart data');
@@ -142,6 +144,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     toast.info("Zoom reset to default view");
   }, []);
 
+  // Get signals for a panel
+  const getPanelSignals = useCallback((panelId: string) => {
+    // In this simplified approach, we're using all available signals
+    return signals;
+  }, [signals]);
+
   return (
     <Card className={className}>
       <CardHeader>
@@ -149,8 +157,8 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
           <div>
             <CardTitle>Data Analysis</CardTitle>
             <CardDescription>
-              {panels.length > 0 
-                ? `Viewing ${panels.length} panels of ${POINTS_PER_PANEL} points each` 
+              {timeSegments.length > 0 
+                ? `Viewing ${timeSegments.length} segments of ${POINTS_PER_PANEL} points each` 
                 : 'Process log data to begin analysis'}
             </CardDescription>
           </div>
@@ -169,7 +177,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
               onClick={handleResetZoom}
               disabled={!zoomDomain}
             >
-              <ZoomIn className="h-4 w-4 mr-1" />
+              <RefreshCcw className="h-4 w-4 mr-1" />
               Reset Zoom
             </Button>
 
@@ -185,33 +193,42 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       </CardHeader>
 
       <CardContent>
-        {panels.length > 0 ? (
-          <Tabs value={activePanel} onValueChange={setActivePanel}>
-            <div className="mb-4 overflow-x-auto">
-              <TabsList className="inline-flex flex-wrap h-auto py-2">
-                {panels.map((panel) => (
-                  <TabsTrigger key={panel.id} value={panel.id} className="text-xs h-auto py-1.5 px-2.5">
-                    Panel {parseInt(panel.id) + 1}
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
+        {timeSegments.length > 0 ? (
+          <div>
+            <ScrollArea className="w-full">
+              <div className="mb-4 overflow-x-auto pb-2">
+                <TabsList className="inline-flex h-auto py-2 w-auto">
+                  {timeSegments.map((segment, index) => (
+                    <TabsTrigger 
+                      key={segment.id} 
+                      value={segment.id}
+                      onClick={() => setSelectedSegment(segment.id)}
+                      className={`text-xs h-auto py-1.5 px-2.5 whitespace-nowrap ${segment.id === selectedSegment ? 'bg-primary text-primary-foreground' : ''}`}
+                    >
+                      Segment {index + 1}
+                    </TabsTrigger>
+                  ))}
+                </TabsList>
+              </div>
+            </ScrollArea>
 
-            {panels.map((panel) => (
-              <TabsContent key={panel.id} value={panel.id}>
+            <div className="mt-4">
+              {selectedSegment && (
                 <VictoryChartDisplay
                   chartType={chartType}
-                  visibleChartData={panel.data}
+                  visibleChartData={timeSegments.find(s => s.id === selectedSegment)?.data || []}
                   signals={signals}
                   onZoomDomainChange={handleZoomDomainChange}
                 />
+              )}
+              {selectedSegment && timeSegments.find(s => s.id === selectedSegment) && (
                 <div className="mt-2 text-xs text-muted-foreground">
-                  Time range: {panel.range.start.toLocaleString()} - {panel.range.end.toLocaleString()}
-                  {panel.data && ` | ${panel.data.length} data points`}
+                  Time range: {new Date(timeSegments.find(s => s.id === selectedSegment)!.startTime).toLocaleTimeString()} - {new Date(timeSegments.find(s => s.id === selectedSegment)!.endTime).toLocaleTimeString()}
+                  {timeSegments.find(s => s.id === selectedSegment)!.data && ` | ${timeSegments.find(s => s.id === selectedSegment)!.data.length} data points`}
                 </div>
-              </TabsContent>
-            ))}
-          </Tabs>
+              )}
+            </div>
+          </div>
         ) : (
           <div className="py-16 flex flex-col items-center justify-center text-center">
             <FileText className="w-12 h-12 mb-4 text-muted-foreground/50" />
