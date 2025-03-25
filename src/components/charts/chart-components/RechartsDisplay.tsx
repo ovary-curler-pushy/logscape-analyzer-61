@@ -25,6 +25,7 @@ const CustomTooltip = React.memo(({ active, payload, label }: any) => {
       <div className="p-2 bg-white dark:bg-slate-800 shadow-md border rounded-md text-xs">
         <p className="font-medium mb-1">{formattedTime}</p>
         {payload.map((entry: any, index: number) => {
+          // Check if we have an original string value stored
           const originalKey = `${entry.name}_original`;
           const hasOriginalValue = entry.payload && originalKey in entry.payload;
           

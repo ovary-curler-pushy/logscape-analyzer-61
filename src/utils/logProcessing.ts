@@ -1,3 +1,4 @@
+
 import { toast } from "sonner";
 import { RegexPattern } from "@/components/regex/RegexManager";
 import { LogData, Signal, CHART_COLORS, DataTimeRange, TimeSegment } from "@/types/chartTypes";
@@ -41,8 +42,11 @@ export const processLogDataInChunks = (
   
   let currentChunk = 0;
   const parsedData: LogData[] = [];
-  const stringValues: Record<string, Set<string>> = {};
+  
+  // For string-to-number mapping, store all unique string values per signal
+  const stringValueSets: Record<string, Set<string>> = {};
   const stringValueMaps: Record<string, Record<string, number>> = {};
+  
   const lastSeenValues: Record<string, number | string> = {};
   let minTimestamp: Date | null = null;
   let maxTimestamp: Date | null = null;
@@ -63,28 +67,70 @@ export const processLogDataInChunks = (
   // More efficient timestamp regex
   const timestampRegex = /^(\d{4}[\/\-]\d{2}[\/\-]\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/;
   
-  const processChunk = () => {
-    if (currentChunk >= chunks) {
-      // Create numeric mappings for string values
-      for (const [signalName, valueSet] of Object.entries(stringValues)) {
-        if (!stringValueMaps[signalName]) {
-          stringValueMaps[signalName] = {};
+  // First pass: collect all unique string values for each signal
+  const collectUniqueStringValues = () => {
+    console.log("Starting first pass to collect unique string values");
+    let processedLines = 0;
+    
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      
+      for (const pattern of compiledPatterns) {
+        if (!pattern) continue;
+        
+        try {
+          const match = line.match(pattern.regex);
+          
+          if (match && match[1] !== undefined) {
+            const value = match[1];
+            
+            // If the value is a string (not a number), add it to the set
+            if (isNaN(Number(value))) {
+              if (!stringValueSets[pattern.name]) {
+                stringValueSets[pattern.name] = new Set<string>();
+              }
+              stringValueSets[pattern.name].add(value);
+            }
+          }
+        } catch (error) {
+          // Silently ignore regex errors
         }
-        
-        // Create a sorted array of unique string values
-        const uniqueValues = Array.from(valueSet).sort();
-        
-        // Map each unique string value to a numeric index
-        uniqueValues.forEach((value, index) => {
-          stringValueMaps[signalName][value] = index;
-        });
-        
-        console.log(`Created mapping for ${signalName}:`, stringValueMaps[signalName]);
       }
       
-      // Update the string value map state
-      setStringValueMap(stringValueMaps);
+      processedLines++;
+      if (processedLines % 10000 === 0) {
+        console.log(`Collected string values from ${processedLines} lines`);
+      }
+    }
+    
+    // Create the string-to-number mappings
+    for (const [signalName, valueSet] of Object.entries(stringValueSets)) {
+      if (!stringValueMaps[signalName]) {
+        stringValueMaps[signalName] = {};
+      }
       
+      // Create a sorted array of unique string values for consistent mapping
+      const uniqueValues = Array.from(valueSet).sort();
+      
+      // Map each unique string value to a numeric index (starting from 0)
+      uniqueValues.forEach((value, index) => {
+        stringValueMaps[signalName][value] = index;
+      });
+      
+      console.log(`Created mapping for ${signalName} with ${uniqueValues.length} unique values:`, 
+        Object.fromEntries(uniqueValues.map((v, i) => [v, i])));
+    }
+    
+    // Update the string value map state
+    setStringValueMap(stringValueMaps);
+    
+    // Now proceed to the second pass to actually parse the data
+    processChunk();
+  };
+  
+  const processChunk = () => {
+    if (currentChunk >= chunks) {
       finalizeProcessing(parsedData);
       return;
     }
@@ -134,18 +180,31 @@ export const processLogDataInChunks = (
               const match = line.match(pattern.regex);
               
               if (match && match[1] !== undefined) {
-                const value = isNaN(Number(match[1])) ? match[1] : Number(match[1]);
+                let value = match[1];
+                
+                // Check if it's a number or string
+                if (!isNaN(Number(value))) {
+                  // It's a number, use it directly
+                  value = Number(value);
+                } else {
+                  // It's a string, store both the original value and its numeric mapping
+                  const originalValue = value;
+                  
+                  // Use the pre-created mapping for this string value
+                  if (stringValueMaps[pattern.name] && stringValueMaps[pattern.name][originalValue] !== undefined) {
+                    value = stringValueMaps[pattern.name][originalValue];
+                    // Store the original string value with a special prefix for reference
+                    values[`${pattern.name}_original`] = originalValue;
+                  } else {
+                    // Fallback if mapping doesn't exist (shouldn't happen)
+                    console.warn(`No mapping found for ${pattern.name}:${originalValue}`);
+                    value = -1; // Use a default value
+                  }
+                }
+                
                 values[pattern.name] = value;
                 lastSeenValues[pattern.name] = value;
                 hasNewValue = true;
-                
-                // Track string values for later mapping
-                if (typeof value === 'string') {
-                  if (!stringValues[pattern.name]) {
-                    stringValues[pattern.name] = new Set<string>();
-                  }
-                  stringValues[pattern.name].add(value);
-                }
                 
                 successCount++;
               }
@@ -204,8 +263,8 @@ export const processLogDataInChunks = (
     }
   };
 
-  // Start processing
-  processChunk();
+  // Start the processing with the first pass to collect string values
+  collectUniqueStringValues();
 };
 
 // Helper function to map string values to their numeric equivalents based on the mapping
@@ -216,7 +275,7 @@ export const mapStringValueToNumber = (
 ): number => {
   if (!stringValueMap || !stringValueMap[signalName] || !(stringValue in stringValueMap[signalName])) {
     // Return default value if mapping doesn't exist
-    return 0;
+    return -1;
   }
   
   return stringValueMap[signalName][stringValue];
