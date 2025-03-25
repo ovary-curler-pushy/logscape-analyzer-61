@@ -47,8 +47,9 @@ export const processLogDataInChunks = (
   const stringValueMaps: Record<string, Record<string, number>> = {};
   
   // For keeping track of last seen values
-  interface NumericValue { type: 'numeric'; value: number; }
-  interface StringValue { type: 'string'; value: string; mappedValue: number; }
+  // Define our value types with a discriminated union for type safety
+  type NumericValue = { type: 'numeric'; value: number; };
+  type StringValue = { type: 'string'; value: string; mappedValue: number; };
   type LastSeenValue = NumericValue | StringValue;
   
   const lastSeenValues: Record<string, LastSeenValue> = {};
@@ -114,7 +115,7 @@ export const processLogDataInChunks = (
       stringValueMaps[signalName] = {};
       
       values.forEach((value, index) => {
-        stringValueMaps[signalName][value] = index;
+        stringValueMaps[signalName][value] = index; // Use index as numeric value
       });
       
       console.log(`Created mapping for ${signalName}: `, 
@@ -196,14 +197,15 @@ export const processLogDataInChunks = (
                   };
                   hasNewValue = true;
                 } 
-                // Handle string values
+                // Handle string values - improved handling
                 else {
-                  // Store both the original string value and its numeric mapping
                   if (stringValueMaps[signalName] && stringValueMaps[signalName][extractedValue] !== undefined) {
                     const mappedValue = stringValueMaps[signalName][extractedValue];
                     
-                    // Store both the mapped value (for chart plotting) and original value (for tooltip)
+                    // Store the NUMERIC value for charting
                     values[signalName] = mappedValue;
+                    
+                    // Store the ORIGINAL string value for tooltips
                     values[`${signalName}_original`] = extractedValue;
                     
                     lastSeenValues[signalName] = {

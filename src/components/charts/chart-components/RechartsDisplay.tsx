@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -9,10 +10,12 @@ import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
 import { RefreshCw } from 'lucide-react';
+import { HoverCard, HoverCardTrigger, HoverCardContent } from '@/components/ui/hover-card';
 
-// Custom tooltip component for charts
+// Completely redesigned tooltip component
 const CustomTooltip = React.memo(({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
+    // Format timestamp
     let formattedTime;
     try {
       formattedTime = format(new Date(label), 'HH:mm:ss.SSS');
@@ -24,20 +27,27 @@ const CustomTooltip = React.memo(({ active, payload, label }: any) => {
       <div className="p-2 bg-white dark:bg-slate-800 shadow-md border rounded-md text-xs">
         <p className="font-medium mb-1">{formattedTime}</p>
         {payload.map((entry: any, index: number) => {
-          // Check if this value has an original string representation
-          const originalValueKey = `${entry.name}_original`;
+          const signalName = entry.name;
+          
+          // Check if this is a string value with original representation
+          const originalValueKey = `${signalName}_original`;
           const hasOriginalValue = entry.payload && originalValueKey in entry.payload;
           
           return (
             <div key={`tooltip-${index}`} className="flex items-center gap-2 py-0.5">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
               <span className="font-medium">{entry.name}:</span>
+              
               {hasOriginalValue ? (
-                // For values that have string representations
-                <span>{entry.payload[originalValueKey]}</span>
+                // Show string value from the original field
+                <span className="font-mono">
+                  "{entry.payload[originalValueKey]}"
+                </span>
               ) : (
-                // For regular numeric values
-                <span>{typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}</span>
+                // Show numeric value with appropriate formatting
+                <span className="font-mono">
+                  {typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}
+                </span>
               )}
             </div>
           );
@@ -98,7 +108,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     setRefAreaLeft(e.activeLabel);
   }, []);
 
-  // Handle mouse move for zoom selection - debounced version
+  // Handle mouse move for zoom selection
   const handleMouseMove = useCallback((e: any) => {
     if (refAreaLeft && e && e.activeLabel) {
       setRefAreaRight(e.activeLabel);
@@ -155,6 +165,9 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
       </div>
     );
   }
+
+  // Debug the data structure
+  console.log('Chart data sample (first point):', sampledData[0]);
 
   // Prepare domain for x-axis based on zoom state
   const xDomain = zoomDomain 

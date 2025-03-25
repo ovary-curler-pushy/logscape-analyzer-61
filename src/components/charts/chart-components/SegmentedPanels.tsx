@@ -61,6 +61,11 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   const selectedSegmentData = timeSegments.find(s => s.id === selectedSegment)?.data || [];
   const panelSignals = getPanelSignals('panel-1'); // Using first panel for all segments
 
+  // Log a sample data point for debugging
+  if (selectedSegmentData.length > 0) {
+    console.log('Sample segment data point:', selectedSegmentData[0]);
+  }
+
   // Find current segment index for navigation
   const currentSegmentIndex = timeSegments.findIndex(s => s.id === selectedSegment);
   const currentSegment = timeSegments[currentSegmentIndex];

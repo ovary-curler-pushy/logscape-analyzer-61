@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { FileText } from "lucide-react";
@@ -90,18 +91,14 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
         
         // Flatten values from the values object
         Object.entries(item.values || {}).forEach(([key, value]) => {
-          if (typeof value === 'number') {
-            result[key] = value;
-          } else if (typeof value === 'string') {
-            // Apply string value mapping
-            const numValue = mapStringValueToNumber(key, value, stringValueMap);
-            result[key] = numValue;
-            result[`${key}_original`] = value; // Keep original string value
-          }
+          result[key] = value;
         });
         
         return result;
       });
+
+      // Let's debug a sample of the data
+      console.log("Sample processed data point:", processedData[0]);
 
       // Create time segments based on POINTS_PER_PANEL
       const segments: TimeSegment[] = [];
