@@ -1,11 +1,11 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
 import { SegmentedPanelsProps } from '@/types/chartTypes';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import VictoryChartDisplay from './VictoryChartDisplay';
 import { toast } from 'sonner';
+import RechartsDisplay from './RechartsDisplay';
 
 const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   timeSegments,
@@ -16,6 +16,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   getPanelSignals
 }) => {
   const [zoomDomain, setZoomDomain] = useState<{ start?: number, end?: number }>({});
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // Reset zoom domain when segment changes
   useEffect(() => {
@@ -51,7 +52,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
       <Tabs value={selectedSegment} onValueChange={onSegmentChange}>
         <div className="mb-2">
           <p className="text-sm text-muted-foreground mb-1">Time segments (approximately 5000 points each)</p>
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto pb-2">
             <TabsList className="inline-flex flex-nowrap h-auto py-1 px-1">
               {timeSegments.map(segment => (
                 <TabsTrigger 
@@ -88,12 +89,14 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="h-[300px]">
-            <VictoryChartDisplay
+          <div className="h-[300px]" ref={containerRef}>
+            <RechartsDisplay
               chartType={chartType}
               visibleChartData={selectedSegmentData}
               signals={panelSignals}
+              zoomDomain={zoomDomain}
               onZoomDomainChange={handleZoomDomainChange}
+              containerRef={containerRef}
             />
           </div>
         </CardContent>

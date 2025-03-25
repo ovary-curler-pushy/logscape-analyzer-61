@@ -62,19 +62,21 @@ export const processLogDataInChunks = (
     chunkLines.forEach((line) => {
       if (!line.trim()) return;
       
-      const timestampMatch = line.match(/^(\d{4}\/\d{2}\/\d{2} \d{2}:\d{2}:\d{2}\.\d{6})/);
+      // More flexible timestamp regex to catch more formats
+      const timestampMatch = line.match(/^(\d{4}[\/\-]\d{2}[\/\-]\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
       
       if (timestampMatch) {
         try {
           const timestampStr = timestampMatch[1];
+          // Convert to ISO format for better parsing
           const isoTimestamp = timestampStr
             .replace(/\//g, '-')
-            .replace(' ', 'T')
-            .substring(0, 23);
+            .replace(' ', 'T');
           
           const timestamp = new Date(isoTimestamp);
           
           if (isNaN(timestamp.getTime())) {
+            console.log("Invalid timestamp:", timestampStr);
             return;
           }
           
@@ -125,7 +127,7 @@ export const processLogDataInChunks = (
             parsedData.push({ timestamp, values });
           }
         } catch (error) {
-          // Silently ignore date parsing errors
+          console.error("Error processing line:", error);
         }
       }
     });

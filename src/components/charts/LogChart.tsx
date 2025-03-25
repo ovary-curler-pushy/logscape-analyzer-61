@@ -1,12 +1,12 @@
 
-import React, { useState, useCallback, useEffect } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { FileText, Wand, RefreshCcw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import VictoryChartDisplay from "./chart-components/VictoryChartDisplay";
+import SegmentedPanels from "./chart-components/SegmentedPanels";
 import { LogChartProps, TimeSegment } from '@/types/chartTypes';
 import { processLogDataInChunks } from '@/utils/logProcessing';
 
@@ -22,6 +22,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
   const [processingStatus, setProcessingStatus] = useState("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [zoomDomain, setZoomDomain] = useState<any>(null);
+  const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Process log data when inputs change
   useEffect(() => {
@@ -63,11 +64,12 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       });
 
       console.log("Total data points:", sortedData.length);
+      console.log("First sorted data point:", sortedData[0]);
 
       // Process data to flattened format for chart
       const processedData = sortedData.map(item => {
         const timestamp = item.timestamp instanceof Date 
-          ? item.timestamp.getTime() // Convert Date object to number for Victory
+          ? item.timestamp.getTime() // Convert Date object to number
           : new Date(item.timestamp).getTime(); // Convert string date to number
         
         const result: any = { timestamp };
@@ -93,6 +95,8 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
         return result;
       });
 
+      console.log("Sample processed data:", processedData.slice(0, 5));
+
       // Create time segments based on POINTS_PER_PANEL
       const segments: TimeSegment[] = [];
       
@@ -115,7 +119,7 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
       
       console.log(`Created ${segments.length} segments with ${POINTS_PER_PANEL} points per segment`);
       console.log("First segment points:", segments[0]?.data?.length);
-      console.log("First data point:", segments[0]?.data?.[0]);
+      console.log("First data point in first segment:", segments[0]?.data?.[0]);
       
       toast.success(`Data divided into ${segments.length} segments`);
     } catch (error) {
@@ -194,41 +198,14 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
 
       <CardContent>
         {timeSegments.length > 0 ? (
-          <div>
-            <ScrollArea className="w-full">
-              <div className="mb-4 overflow-x-auto pb-2">
-                <TabsList className="inline-flex h-auto py-2 w-auto">
-                  {timeSegments.map((segment, index) => (
-                    <TabsTrigger 
-                      key={segment.id} 
-                      value={segment.id}
-                      onClick={() => setSelectedSegment(segment.id)}
-                      className={`text-xs h-auto py-1.5 px-2.5 whitespace-nowrap ${segment.id === selectedSegment ? 'bg-primary text-primary-foreground' : ''}`}
-                    >
-                      Segment {index + 1}
-                    </TabsTrigger>
-                  ))}
-                </TabsList>
-              </div>
-            </ScrollArea>
-
-            <div className="mt-4">
-              {selectedSegment && (
-                <VictoryChartDisplay
-                  chartType={chartType}
-                  visibleChartData={timeSegments.find(s => s.id === selectedSegment)?.data || []}
-                  signals={signals}
-                  onZoomDomainChange={handleZoomDomainChange}
-                />
-              )}
-              {selectedSegment && timeSegments.find(s => s.id === selectedSegment) && (
-                <div className="mt-2 text-xs text-muted-foreground">
-                  Time range: {new Date(timeSegments.find(s => s.id === selectedSegment)!.startTime).toLocaleTimeString()} - {new Date(timeSegments.find(s => s.id === selectedSegment)!.endTime).toLocaleTimeString()}
-                  {timeSegments.find(s => s.id === selectedSegment)!.data && ` | ${timeSegments.find(s => s.id === selectedSegment)!.data.length} data points`}
-                </div>
-              )}
-            </div>
-          </div>
+          <SegmentedPanels
+            timeSegments={timeSegments}
+            signals={signals}
+            selectedSegment={selectedSegment}
+            onSegmentChange={setSelectedSegment}
+            chartType={chartType}
+            getPanelSignals={getPanelSignals}
+          />
         ) : (
           <div className="py-16 flex flex-col items-center justify-center text-center">
             <FileText className="w-12 h-12 mb-4 text-muted-foreground/50" />
