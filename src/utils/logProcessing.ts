@@ -47,7 +47,10 @@ export const processLogDataInChunks = (
   const stringValueSets: Record<string, Set<string>> = {};
   const stringValueMaps: Record<string, Record<string, number>> = {};
   
-  const lastSeenValues: Record<string, number | string> = {};
+  // Updated to properly handle mixed types for last seen values
+  type LastSeenValueType = { type: 'number', value: number } | { type: 'string', value: string };
+  const lastSeenValues: Record<string, LastSeenValueType> = {};
+  
   let minTimestamp: Date | null = null;
   let maxTimestamp: Date | null = null;
   
@@ -180,32 +183,34 @@ export const processLogDataInChunks = (
               const match = line.match(pattern.regex);
               
               if (match && match[1] !== undefined) {
-                let value = match[1];
+                let extractedValue = match[1];
                 
                 // Check if it's a number or string
-                if (!isNaN(Number(value))) {
+                if (!isNaN(Number(extractedValue))) {
                   // It's a number, use it directly
-                  value = Number(value);
+                  const numberValue = Number(extractedValue);
+                  values[pattern.name] = numberValue;
+                  lastSeenValues[pattern.name] = { type: 'number', value: numberValue };
                 } else {
                   // It's a string, store both the original value and its numeric mapping
-                  const originalValue = value;
+                  const originalValue = extractedValue;
                   
                   // Use the pre-created mapping for this string value
                   if (stringValueMaps[pattern.name] && stringValueMaps[pattern.name][originalValue] !== undefined) {
-                    value = stringValueMaps[pattern.name][originalValue];
+                    const mappedValue = stringValueMaps[pattern.name][originalValue];
+                    values[pattern.name] = mappedValue;
                     // Store the original string value with a special prefix for reference
                     values[`${pattern.name}_original`] = originalValue;
+                    lastSeenValues[pattern.name] = { type: 'string', value: originalValue };
                   } else {
                     // Fallback if mapping doesn't exist (shouldn't happen)
                     console.warn(`No mapping found for ${pattern.name}:${originalValue}`);
-                    value = -1; // Use a default value
+                    values[pattern.name] = -1; // Use a default value
+                    lastSeenValues[pattern.name] = { type: 'string', value: originalValue };
                   }
                 }
                 
-                values[pattern.name] = value;
-                lastSeenValues[pattern.name] = value;
                 hasNewValue = true;
-                
                 successCount++;
               }
             } catch (error) {
@@ -217,7 +222,19 @@ export const processLogDataInChunks = (
           for (const pattern of compiledPatterns) {
             if (!pattern) continue;
             if (!(pattern.name in values) && pattern.name in lastSeenValues) {
-              values[pattern.name] = lastSeenValues[pattern.name];
+              const lastSeen = lastSeenValues[pattern.name];
+              if (lastSeen.type === 'number') {
+                values[pattern.name] = lastSeen.value;
+              } else {
+                // It's a string type
+                const originalValue = lastSeen.value;
+                if (stringValueMaps[pattern.name] && stringValueMaps[pattern.name][originalValue] !== undefined) {
+                  values[pattern.name] = stringValueMaps[pattern.name][originalValue];
+                  values[`${pattern.name}_original`] = originalValue;
+                } else {
+                  values[pattern.name] = -1;
+                }
+              }
             }
           }
           
