@@ -6,8 +6,10 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import RechartsDisplay from "./chart-components/RechartsDisplay";
+import PanelTabsManager from "./chart-components/PanelTabsManager";
 import SegmentedPanels from "./chart-components/SegmentedPanels";
-import { LogChartProps, TimeSegment } from '@/types/chartTypes';
+import { LogChartProps, Signal, ChartPanel, TimeSegment, CHART_COLORS } from '@/types/chartTypes';
 import { processLogDataInChunks } from '@/utils/logProcessing';
 
 const POINTS_PER_PANEL = 5000;
@@ -15,14 +17,29 @@ const POINTS_PER_PANEL = 5000;
 const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) => {
   // Basic states
   const [rawChartData, setRawChartData] = useState<any[]>([]);
-  const [signals, setSignals] = useState<any[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [panels, setPanels] = useState<ChartPanel[]>([]);
+  const [activePanel, setActivePanel] = useState<string>("");
   const [timeSegments, setTimeSegments] = useState<TimeSegment[]>([]);
   const [selectedSegment, setSelectedSegment] = useState<string>("");
+  const [viewMode, setViewMode] = useState<'panels' | 'segments'>('panels');
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStatus, setProcessingStatus] = useState("");
   const [chartType, setChartType] = useState<'line' | 'bar'>('line');
   const [zoomDomain, setZoomDomain] = useState<any>(null);
-  const scrollAreaRef = useRef<HTMLDivElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // Initialize the panels when signals change
+  useEffect(() => {
+    if (signals.length > 0 && panels.length === 0) {
+      const initialPanel: ChartPanel = {
+        id: 'panel-1',
+        signals: signals.map(s => s.id)
+      };
+      setPanels([initialPanel]);
+      setActivePanel('panel-1');
+    }
+  }, [signals, panels]);
 
   // Process log data when inputs change
   useEffect(() => {
@@ -130,6 +147,63 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     setIsProcessing(false);
   }, []);
 
+  // Panel management functions
+  const handleAddPanel = useCallback(() => {
+    const newPanelId = `panel-${panels.length + 1}`;
+    const newPanel: ChartPanel = {
+      id: newPanelId,
+      signals: []
+    };
+    
+    setPanels(prev => [...prev, newPanel]);
+    setActivePanel(newPanelId);
+    toast.success(`Added new panel: ${newPanelId}`);
+  }, [panels]);
+
+  const handleRemovePanel = useCallback((panelId: string) => {
+    if (panels.length <= 1) return;
+    
+    setPanels(prev => {
+      const filtered = prev.filter(p => p.id !== panelId);
+      if (activePanel === panelId && filtered.length > 0) {
+        setActivePanel(filtered[0].id);
+      }
+      return filtered;
+    });
+    
+    toast.info(`Removed panel: ${panelId}`);
+  }, [panels, activePanel]);
+
+  const handleAddSignal = useCallback((panelId: string, signalId: string) => {
+    setPanels(prev => 
+      prev.map(panel => 
+        panel.id === panelId
+          ? { ...panel, signals: [...panel.signals, signalId] }
+          : panel
+      )
+    );
+  }, []);
+
+  const handleRemoveSignal = useCallback((panelId: string, signalId: string) => {
+    setPanels(prev => 
+      prev.map(panel => 
+        panel.id === panelId
+          ? { ...panel, signals: panel.signals.filter(id => id !== signalId) }
+          : panel
+      )
+    );
+  }, []);
+
+  const handleToggleSignalVisibility = useCallback((signalId: string) => {
+    setSignals(prev => 
+      prev.map(signal => 
+        signal.id === signalId
+          ? { ...signal, visible: !signal.visible }
+          : signal
+      )
+    );
+  }, []);
+
   // Handle zoom domain changes
   const handleZoomDomainChange = useCallback((domain: any) => {
     setZoomDomain(domain);
@@ -148,11 +222,41 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
     toast.info("Zoom reset to default view");
   }, []);
 
-  // Get signals for a panel
+  // Get the visible signals for a specific panel
   const getPanelSignals = useCallback((panelId: string) => {
-    // In this simplified approach, we're using all available signals
-    return signals;
-  }, [signals]);
+    const panel = panels.find(p => p.id === panelId);
+    if (!panel) return [];
+    
+    return signals
+      .filter(signal => panel.signals.includes(signal.id) && signal.visible);
+  }, [signals, panels]);
+  
+  // Render chart display for a specific panel
+  const renderPanelChartDisplay = useCallback((panelId: string) => {
+    const currentSegment = timeSegments.find(s => s.id === selectedSegment);
+    if (!currentSegment) return null;
+    
+    const panelSignals = getPanelSignals(panelId);
+    
+    return (
+      <div className="h-[300px]" ref={containerRef}>
+        <RechartsDisplay
+          chartType={chartType}
+          visibleChartData={currentSegment.data}
+          signals={panelSignals}
+          zoomDomain={zoomDomain}
+          onZoomDomainChange={handleZoomDomainChange}
+          containerRef={containerRef}
+        />
+      </div>
+    );
+  }, [timeSegments, selectedSegment, getPanelSignals, chartType, zoomDomain, handleZoomDomainChange]);
+
+  // View mode toggle
+  const handleViewModeChange = useCallback((mode: 'panels' | 'segments') => {
+    setViewMode(mode);
+    toast.info(`Switched to ${mode} view`);
+  }, []);
 
   return (
     <Card className={className}>
@@ -174,6 +278,13 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
                 {processingStatus}
               </div>
             )}
+
+            <Tabs value={viewMode} onValueChange={(v: string) => handleViewModeChange(v as 'panels' | 'segments')}>
+              <TabsList className="h-8">
+                <TabsTrigger value="panels" className="text-xs px-2">Separate Panels</TabsTrigger>
+                <TabsTrigger value="segments" className="text-xs px-2">Time Segments</TabsTrigger>
+              </TabsList>
+            </Tabs>
 
             <Button
               variant="outline"
@@ -198,14 +309,29 @@ const LogChart: React.FC<LogChartProps> = ({ logContent, patterns, className }) 
 
       <CardContent>
         {timeSegments.length > 0 ? (
-          <SegmentedPanels
-            timeSegments={timeSegments}
-            signals={signals}
-            selectedSegment={selectedSegment}
-            onSegmentChange={setSelectedSegment}
-            chartType={chartType}
-            getPanelSignals={getPanelSignals}
-          />
+          viewMode === 'panels' ? (
+            <PanelTabsManager
+              panels={panels}
+              activeTab={activePanel}
+              signals={signals}
+              onActiveTabChange={setActivePanel}
+              onAddPanel={handleAddPanel}
+              onRemovePanel={handleRemovePanel}
+              onAddSignal={handleAddSignal}
+              onRemoveSignal={handleRemoveSignal}
+              onToggleSignalVisibility={handleToggleSignalVisibility}
+              renderChartDisplay={renderPanelChartDisplay}
+            />
+          ) : (
+            <SegmentedPanels
+              timeSegments={timeSegments}
+              signals={signals}
+              selectedSegment={selectedSegment}
+              onSegmentChange={setSelectedSegment}
+              chartType={chartType}
+              getPanelSignals={getPanelSignals}
+            />
+          )
         ) : (
           <div className="py-16 flex flex-col items-center justify-center text-center">
             <FileText className="w-12 h-12 mb-4 text-muted-foreground/50" />

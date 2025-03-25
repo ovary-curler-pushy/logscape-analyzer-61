@@ -1,4 +1,3 @@
-
 import { RegexPattern } from "@/components/regex/RegexManager";
 
 export interface LogData {
