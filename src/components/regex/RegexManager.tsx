@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
-import { PlusCircle, Save, Trash2, Check, X, Edit, Play, Info } from "lucide-react";
+import { PlusCircle, Save, Trash2, Check, X, Edit, Play, Info, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +14,11 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import PatternForm from "./PatternForm";
-import { savePatterns, loadPatterns } from "@/utils/patternStorage";
+import { 
+  savePatterns, 
+  loadPatterns, 
+  checkForSharedPatternUpdates 
+} from "@/utils/patternStorage";
 
 export interface RegexPattern {
   id: string;
@@ -37,62 +40,18 @@ const RegexManager: React.FC<RegexManagerProps> = ({ onApplyPattern, logSample }
   const [testDialogOpen, setTestDialogOpen] = useState(false);
   const [testResults, setTestResults] = useState<string[]>([]);
   const [testPattern, setTestPattern] = useState<RegexPattern | null>(null);
+  const [isCheckingForUpdates, setIsCheckingForUpdates] = useState(false);
 
   // Load saved patterns from both localStorage and server on initial render
   useEffect(() => {
     const loadSavedPatterns = async () => {
       try {
-        // Try to load patterns from our utility (which uses IndexedDB)
+        // Load patterns using our updated utility
         const savedPatterns = await loadPatterns();
         
         if (savedPatterns && savedPatterns.length > 0) {
           setPatterns(savedPatterns);
-          return;
         }
-        
-        // Fall back to localStorage if no patterns in IndexedDB
-        const localStoragePatterns = localStorage.getItem("regexPatterns");
-        if (localStoragePatterns) {
-          const parsed = JSON.parse(localStoragePatterns);
-          setPatterns(parsed);
-          
-          // Also save to our new storage system
-          await savePatterns(parsed);
-          return;
-        }
-        
-        // Add default patterns if none exist
-        const defaultPatterns: RegexPattern[] = [
-          {
-            id: "default-cpu",
-            name: "CPU Usage",
-            pattern: "CPU_USAGE cpu=(\\d+)%",
-            description: "Extracts CPU usage percentage"
-          },
-          {
-            id: "default-memory",
-            name: "Memory Usage",
-            pattern: "MEMORY_USAGE memory=(\\d+)MB",
-            description: "Extracts memory usage in MB"
-          },
-          {
-            id: "default-http",
-            name: "HTTP Status",
-            pattern: "HTTP_REQUEST .* status=(\\d+) .*",
-            description: "Extracts HTTP status codes"
-          },
-          {
-            id: "default-response-time",
-            name: "Response Time",
-            pattern: "HTTP_REQUEST .* time=(\\d+)ms",
-            description: "Extracts HTTP response time"
-          }
-        ];
-        setPatterns(defaultPatterns);
-        
-        // Save default patterns
-        await savePatterns(defaultPatterns);
-        localStorage.setItem("regexPatterns", JSON.stringify(defaultPatterns));
       } catch (error) {
         console.error("Error loading patterns:", error);
         toast.error("Error loading saved patterns");
@@ -100,14 +59,29 @@ const RegexManager: React.FC<RegexManagerProps> = ({ onApplyPattern, logSample }
     };
     
     loadSavedPatterns();
+    
+    // Set up interval to check for pattern updates
+    const checkInterval = setInterval(async () => {
+      try {
+        const hasUpdates = await checkForSharedPatternUpdates();
+        if (hasUpdates) {
+          const updatedPatterns = await loadPatterns();
+          setPatterns(updatedPatterns);
+          toast.info("New patterns have been synchronized");
+        }
+      } catch (error) {
+        console.error("Error checking for pattern updates:", error);
+      }
+    }, 30000); // Check every 30 seconds
+    
+    return () => clearInterval(checkInterval);
   }, []);
 
-  // Save patterns whenever they change, both to IndexedDB and localStorage for backward compat
+  // Save patterns whenever they change
   useEffect(() => {
     const persistPatterns = async () => {
       try {
         await savePatterns(patterns);
-        localStorage.setItem("regexPatterns", JSON.stringify(patterns));
       } catch (error) {
         console.error("Error saving patterns:", error);
       }
@@ -208,41 +182,78 @@ const RegexManager: React.FC<RegexManagerProps> = ({ onApplyPattern, logSample }
     }
   };
 
+  const handleCheckForUpdates = async () => {
+    setIsCheckingForUpdates(true);
+    try {
+      const hasUpdates = await checkForSharedPatternUpdates();
+      if (hasUpdates) {
+        const updatedPatterns = await loadPatterns();
+        setPatterns(updatedPatterns);
+        toast.success("Patterns have been synchronized");
+      } else {
+        toast.info("Your patterns are already up to date");
+      }
+    } catch (error) {
+      console.error("Error checking for pattern updates:", error);
+      toast.error("Failed to check for pattern updates");
+    } finally {
+      setIsCheckingForUpdates(false);
+    }
+  };
+
   return (
     <Card className="shadow-sm border-border/50">
       <CardHeader className="pb-3">
         <div className="flex justify-between items-center">
-          <CardTitle className="text-lg">Regular Expression Patterns</CardTitle>
-          <Dialog open={newPatternOpen} onOpenChange={setNewPatternOpen}>
-            <DialogTrigger asChild>
-              <Button 
-                variant="outline" 
-                size="sm" 
-                className="flex items-center gap-1" 
-                onClick={() => setEditingPattern(null)}
-              >
-                <PlusCircle className="h-4 w-4" />
-                <span>New Pattern</span>
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-[500px]">
-              <DialogHeader>
-                <DialogTitle>
-                  {editingPattern ? "Edit Pattern" : "Create New Pattern"}
-                </DialogTitle>
-              </DialogHeader>
-              <PatternForm 
-                onSave={handleSavePattern} 
-                pattern={editingPattern} 
-                onCancel={() => {
-                  setNewPatternOpen(false);
-                  setEditingPattern(null);
-                }} 
-              />
-            </DialogContent>
-          </Dialog>
+          <div className="flex items-center gap-2">
+            <CardTitle className="text-lg">Regular Expression Patterns</CardTitle>
+            <Badge variant="outline" className="ml-2">Shared</Badge>
+          </div>
+          
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="flex items-center gap-1"
+              onClick={handleCheckForUpdates}
+              disabled={isCheckingForUpdates}
+            >
+              <RefreshCw className={`h-4 w-4 ${isCheckingForUpdates ? 'animate-spin' : ''}`} />
+              <span>Sync</span>
+            </Button>
+            
+            <Dialog open={newPatternOpen} onOpenChange={setNewPatternOpen}>
+              <DialogTrigger asChild>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="flex items-center gap-1" 
+                  onClick={() => setEditingPattern(null)}
+                >
+                  <PlusCircle className="h-4 w-4" />
+                  <span>New Pattern</span>
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="sm:max-w-[500px]">
+                <DialogHeader>
+                  <DialogTitle>
+                    {editingPattern ? "Edit Pattern" : "Create New Pattern"}
+                  </DialogTitle>
+                </DialogHeader>
+                <PatternForm 
+                  onSave={handleSavePattern} 
+                  pattern={editingPattern} 
+                  onCancel={() => {
+                    setNewPatternOpen(false);
+                    setEditingPattern(null);
+                  }} 
+                />
+              </DialogContent>
+            </Dialog>
+          </div>
         </div>
       </CardHeader>
+      
       <CardContent>
         {patterns.length === 0 ? (
           <div className="text-center py-6 text-muted-foreground">
@@ -350,7 +361,6 @@ const RegexManager: React.FC<RegexManagerProps> = ({ onApplyPattern, logSample }
           </>
         )}
 
-        {/* Test pattern dialog */}
         <Dialog open={testDialogOpen} onOpenChange={setTestDialogOpen}>
           <DialogContent className="sm:max-w-[600px]">
             <DialogHeader>
