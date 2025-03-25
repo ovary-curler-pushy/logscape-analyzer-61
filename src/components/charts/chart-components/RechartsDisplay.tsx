@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -25,19 +24,19 @@ const CustomTooltip = React.memo(({ active, payload, label }: any) => {
       <div className="p-2 bg-white dark:bg-slate-800 shadow-md border rounded-md text-xs">
         <p className="font-medium mb-1">{formattedTime}</p>
         {payload.map((entry: any, index: number) => {
-          // Check if we have an original string value stored
-          const originalKey = `${entry.name}_original`;
-          const hasOriginalValue = entry.payload && originalKey in entry.payload;
+          // Check if this value has an original string representation
+          const originalValueKey = `${entry.name}_original`;
+          const hasOriginalValue = entry.payload && originalValueKey in entry.payload;
           
           return (
             <div key={`tooltip-${index}`} className="flex items-center gap-2 py-0.5">
               <div className="w-2 h-2 rounded-full" style={{ backgroundColor: entry.color }} />
               <span className="font-medium">{entry.name}:</span>
               {hasOriginalValue ? (
-                <span>
-                  {entry.payload[originalKey]} ({entry.value.toFixed(1)})
-                </span>
+                // For values that have string representations
+                <span>{entry.payload[originalValueKey]}</span>
               ) : (
+                // For regular numeric values
                 <span>{typeof entry.value === 'number' ? entry.value.toFixed(1) : entry.value}</span>
               )}
             </div>
@@ -241,7 +240,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             />
           )}
           
-          {/* Brush component for additional navigation - optimized with lower height */}
+          {/* Brush component for additional navigation */}
           <Brush 
             dataKey="timestamp" 
             height={20} 
