@@ -20,16 +20,25 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   const [zoomDomain, setZoomDomain] = useState<{ start?: number, end?: number }>({});
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Reset zoom domain when segment changes
+  // Reset zoom domain when segment changes to show full segment
   useEffect(() => {
     setZoomDomain({});
   }, [selectedSegment]);
 
   // Handle zoom domain changes
   const handleZoomDomainChange = (domain: any) => {
-    console.log("Zoom domain changed:", domain);
-    setZoomDomain(domain);
-    toast.info(`Zoomed to selected time range`);
+    if (!domain || (domain.start === 'dataMin' && domain.end === 'dataMax')) {
+      setZoomDomain({});
+    } else {
+      setZoomDomain(domain);
+      toast.info(`Zoomed to selected time range`);
+    }
+  };
+
+  // Handle brush change
+  const handleBrushChange = (brushData: any) => {
+    console.log("Brush data:", brushData);
+    // This only tracks the brush activity
   };
 
   // Handle segment navigation
@@ -144,7 +153,7 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
               zoomDomain={zoomDomain}
               onZoomDomainChange={handleZoomDomainChange}
               containerRef={containerRef}
-              onBrushChange={() => {}} // Empty handler to ensure brush works
+              onBrushChange={handleBrushChange}
             />
           </div>
         </CardContent>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
@@ -6,7 +5,6 @@ import {
 } from 'recharts';
 import { ChartDisplayProps } from '@/types/chartTypes';
 import { toast } from 'sonner';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
 
 // Custom tooltip component for charts
 const CustomTooltip = ({ active, payload, label }: any) => {
@@ -83,32 +81,22 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     }
   };
 
-  // Handle brush change (zoom)
-  const handleBrushChange = (brushData: any) => {
-    if (!brushData || !onBrushChange) return;
+  // Handle brush change (improved version for zooming)
+  const handleBrushChange = (event: any) => {
+    if (!event || !onBrushChange) return;
     
-    try {
-      // Make sure we have valid brush data with indices
-      if (brushData.startIndex !== undefined && brushData.endIndex !== undefined) {
-        if (sampledData && sampledData.length > 0) {
-          const startIndex = Math.max(0, brushData.startIndex);
-          const endIndex = Math.min(sampledData.length - 1, brushData.endIndex);
-          
-          if (startIndex >= endIndex) return;
-          
-          const start = sampledData[startIndex].timestamp;
-          const end = sampledData[endIndex].timestamp;
-          
-          // Pass the brush data to parent component
-          onBrushChange(brushData);
-          
-          if (onZoomDomainChange) {
-            onZoomDomainChange({ start, end });
-          }
-        }
+    const { startIndex, endIndex } = event;
+    if (startIndex === undefined || endIndex === undefined || !sampledData.length) return;
+    
+    const start = sampledData[startIndex]?.timestamp;
+    const end = sampledData[endIndex]?.timestamp;
+    
+    if (start && end) {
+      onBrushChange(event);
+      
+      if (onZoomDomainChange) {
+        onZoomDomainChange({ start, end });
       }
-    } catch (error) {
-      console.error("Error in brush change handler:", error);
     }
   };
 
@@ -121,12 +109,11 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
     );
   }
 
-  // Set domain values for zoom if provided, otherwise show all data
-  const domainStart = zoomDomain?.start || undefined;
-  const domainEnd = zoomDomain?.end || undefined;
+  // For zoom domain, only apply if it's specifically set
+  // Otherwise use dataMin/dataMax to show all data points
+  const domainStart = zoomDomain?.start ? zoomDomain.start : 'dataMin';
+  const domainEnd = zoomDomain?.end ? zoomDomain.end : 'dataMax';
 
-  console.log(`Rendering ${chartType} chart with ${signals.length} signals and ${sampledData.length} data points`);
-  
   return (
     <ResponsiveContainer width="100%" height="100%">
       {chartType === 'line' ? (
@@ -139,7 +126,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             dataKey="timestamp" 
             tickFormatter={formatXAxis} 
             type="number"
-            domain={domainStart && domainEnd ? [domainStart, domainEnd] : ['dataMin', 'dataMax']}
+            domain={[domainStart, domainEnd]}
             scale="time"
           />
           <YAxis />
@@ -164,8 +151,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             onChange={handleBrushChange}
             travellerWidth={10}
             startIndex={0}
-            endIndex={Math.min(200, sampledData.length - 1)}
-            gap={1}
+            endIndex={Math.min(sampledData.length - 1, 200)}
           />
         </LineChart>
       ) : (
@@ -178,7 +164,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             dataKey="timestamp" 
             tickFormatter={formatXAxis} 
             type="number"
-            domain={domainStart && domainEnd ? [domainStart, domainEnd] : ['dataMin', 'dataMax']}
+            domain={[domainStart, domainEnd]}
             scale="time"
           />
           <YAxis />
@@ -200,8 +186,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             onChange={handleBrushChange}
             travellerWidth={10}
             startIndex={0}
-            endIndex={Math.min(200, sampledData.length - 1)}
-            gap={1}
+            endIndex={Math.min(sampledData.length - 1, 200)}
           />
         </BarChart>
       )}
