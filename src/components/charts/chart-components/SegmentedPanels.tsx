@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { format } from 'date-fns';
 import { SegmentedPanelsProps } from '@/types/chartTypes';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,9 +18,19 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   getPanelSignals
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
+  
+  // Calculate the optimal sampling factor based on segment data size
+  const samplingFactor = useMemo(() => {
+    const selectedSegmentData = timeSegments.find(s => s.id === selectedSegment)?.data || [];
+    // Apply sampling for large datasets
+    if (selectedSegmentData.length > 2000) {
+      return Math.ceil(selectedSegmentData.length / 2000);
+    }
+    return 1;
+  }, [timeSegments, selectedSegment]);
 
-  // Handle segment navigation
-  const navigateSegment = (direction: 'next' | 'previous') => {
+  // Handle segment navigation - memoized for performance
+  const navigateSegment = useCallback((direction: 'next' | 'previous') => {
     const currentIndex = timeSegments.findIndex(s => s.id === selectedSegment);
     if (currentIndex === -1) return;
     
@@ -32,8 +42,10 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
     }
     
     onSegmentChange(timeSegments[newIndex].id);
-    toast.info(`Moved to ${direction} segment`);
-  };
+    toast.info(`Moved to ${direction} segment`, {
+      duration: 2000
+    });
+  }, [timeSegments, selectedSegment, onSegmentChange]);
 
   if (timeSegments.length === 0) {
     return (
@@ -122,8 +134,11 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
               visibleChartData={selectedSegmentData}
               signals={panelSignals}
               containerRef={containerRef}
+              samplingFactor={samplingFactor}
               onZoomReset={() => {
-                toast.info("Reset zoom on segment");
+                toast.info("Reset zoom on segment", {
+                  duration: 2000
+                });
               }}
             />
           </div>
@@ -133,4 +148,4 @@ const SegmentedPanels: React.FC<SegmentedPanelsProps> = ({
   );
 };
 
-export default SegmentedPanels;
+export default React.memo(SegmentedPanels);

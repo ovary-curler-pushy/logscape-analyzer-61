@@ -1,4 +1,3 @@
-
 import { RegexPattern } from "@/components/regex/RegexManager";
 
 export interface LogData {
@@ -79,6 +78,7 @@ export interface ChartDisplayProps {
   zoomed?: boolean;
   zoomRange?: [number, number] | null;
   onZoomReset?: () => void;
+  samplingFactor?: number;
 }
 
 export interface LogSampleProps {

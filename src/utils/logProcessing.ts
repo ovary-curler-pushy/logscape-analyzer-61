@@ -16,8 +16,10 @@ export const processLogDataInChunks = (
   setDataTimeRange: React.Dispatch<React.SetStateAction<DataTimeRange>>,
   formatDataCallback: (data: LogData[]) => void
 ) => {
-  // Adaptive chunk size based on device memory
-  const CHUNK_SIZE = 10000; // Increased for faster processing on capable machines
+  // Adaptive chunk size based on content length
+  const totalSize = content.length;
+  const CHUNK_SIZE = totalSize > 1000000 ? 15000 : 10000; // Larger chunks for bigger files
+  
   const lines = content.split('\n');
   const totalLines = lines.length;
   const chunks = Math.ceil(totalLines / CHUNK_SIZE);
@@ -45,6 +47,22 @@ export const processLogDataInChunks = (
   let minTimestamp: Date | null = null;
   let maxTimestamp: Date | null = null;
   
+  // Pre-compile regex patterns for better performance
+  const compiledPatterns = regexPatterns.map(pattern => {
+    try {
+      return {
+        name: pattern.name,
+        regex: new RegExp(pattern.pattern)
+      };
+    } catch (e) {
+      console.error(`Invalid regex pattern: ${pattern.pattern}`);
+      return null;
+    }
+  }).filter(Boolean);
+  
+  // More efficient timestamp regex
+  const timestampRegex = /^(\d{4}[\/\-]\d{2}[\/\-]\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/;
+  
   const processChunk = () => {
     if (currentChunk >= chunks) {
       finalizeProcessing(parsedData);
@@ -59,11 +77,11 @@ export const processLogDataInChunks = (
     
     let successCount = 0;
     
-    chunkLines.forEach((line) => {
-      if (!line.trim()) return;
+    for (let i = 0; i < chunkLines.length; i++) {
+      const line = chunkLines[i];
+      if (!line.trim()) continue;
       
-      // More flexible timestamp regex to catch more formats
-      const timestampMatch = line.match(/^(\d{4}[\/\-]\d{2}[\/\-]\d{2}[\sT]\d{2}:\d{2}:\d{2}(?:\.\d+)?)/);
+      const timestampMatch = line.match(timestampRegex);
       
       if (timestampMatch) {
         try {
@@ -76,8 +94,7 @@ export const processLogDataInChunks = (
           const timestamp = new Date(isoTimestamp);
           
           if (isNaN(timestamp.getTime())) {
-            console.log("Invalid timestamp:", timestampStr);
-            return;
+            continue;
           }
           
           // Update min and max timestamps
@@ -91,10 +108,10 @@ export const processLogDataInChunks = (
           const values: { [key: string]: number | string } = {};
           let hasNewValue = false;
           
-          regexPatterns.forEach((pattern) => {
+          for (const pattern of compiledPatterns) {
             try {
-              const regex = new RegExp(pattern.pattern);
-              const match = line.match(regex);
+              if (!pattern) continue;
+              const match = line.match(pattern.regex);
               
               if (match && match[1] !== undefined) {
                 const value = isNaN(Number(match[1])) ? match[1] : Number(match[1]);
@@ -114,14 +131,15 @@ export const processLogDataInChunks = (
             } catch (error) {
               // Silently ignore regex errors
             }
-          });
+          }
           
           // Add last seen values for patterns not found in this line
-          regexPatterns.forEach((pattern) => {
+          for (const pattern of compiledPatterns) {
+            if (!pattern) continue;
             if (!(pattern.name in values) && pattern.name in lastSeenValues) {
               values[pattern.name] = lastSeenValues[pattern.name];
             }
-          });
+          }
           
           if (Object.keys(values).length > 0 && hasNewValue) {
             parsedData.push({ timestamp, values });
@@ -130,7 +148,7 @@ export const processLogDataInChunks = (
           console.error("Error processing line:", error);
         }
       }
-    });
+    }
     
     const progress = Math.round(((currentChunk + 1) / chunks) * 100);
     if (progress % 10 === 0 || progress === 100) {
@@ -139,8 +157,12 @@ export const processLogDataInChunks = (
     
     currentChunk++;
     
-    // Use setTimeout with 0 ms for smoother UI updates
-    setTimeout(processChunk, 0);
+    // Use requestAnimationFrame for better performance
+    if (window.requestAnimationFrame) {
+      window.requestAnimationFrame(processChunk);
+    } else {
+      setTimeout(processChunk, 0);
+    }
   };
   
   const finalizeProcessing = (parsedData: LogData[]) => {
@@ -155,7 +177,6 @@ export const processLogDataInChunks = (
     parsedData.sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime());
     
     console.log("Processing completed, found", parsedData.length, "data points");
-    console.log("Sample data point:", parsedData[0]);
     
     if (formatDataCallback) {
       formatDataCallback(parsedData);

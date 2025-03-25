@@ -1,5 +1,5 @@
 
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useMemo } from 'react';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, 
   Legend, ResponsiveContainer, Brush, BarChart, Bar,
@@ -9,10 +9,10 @@ import { ChartDisplayProps } from '@/types/chartTypes';
 import { format } from 'date-fns';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { RefreshCw, ZoomIn } from 'lucide-react';
+import { RefreshCw } from 'lucide-react';
 
 // Custom tooltip component for charts
-const CustomTooltip = ({ active, payload, label }: any) => {
+const CustomTooltip = React.memo(({ active, payload, label }: any) => {
   if (active && payload && payload.length) {
     let formattedTime;
     try {
@@ -37,7 +37,8 @@ const CustomTooltip = ({ active, payload, label }: any) => {
     );
   }
   return null;
-};
+});
+CustomTooltip.displayName = 'CustomTooltip';
 
 const RechartsDisplay: React.FC<ChartDisplayProps> = ({
   containerRef,
@@ -45,37 +46,49 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
   visibleChartData,
   signals,
   onBrushChange,
-  onZoomReset
+  onZoomReset,
+  samplingFactor = 1
 }) => {
   const [refAreaLeft, setRefAreaLeft] = useState<number | null>(null);
   const [refAreaRight, setRefAreaRight] = useState<number | null>(null);
   const [isZoomed, setIsZoomed] = useState(false);
   const [zoomDomain, setZoomDomain] = useState<[number, number] | null>(null);
 
-  // Format timestamps on x-axis
-  const formatXAxis = (timestamp: number) => {
+  // Sample the data based on the sampling factor
+  const sampledData = useMemo(() => {
+    if (!visibleChartData || visibleChartData.length === 0) return [];
+    
+    if (samplingFactor === 1 || visibleChartData.length < 1000) {
+      return visibleChartData;
+    }
+    
+    return visibleChartData.filter((_, i) => i % samplingFactor === 0);
+  }, [visibleChartData, samplingFactor]);
+  
+  // Format timestamps on x-axis - memoize formatter for performance
+  const formatXAxis = useCallback((timestamp: number) => {
     try {
       return format(new Date(timestamp), 'HH:mm:ss');
     } catch (e) {
       return '';
     }
-  };
+  }, []);
 
   // Handle mouse down for zoom selection
-  const handleMouseDown = (e: any) => {
+  const handleMouseDown = useCallback((e: any) => {
     if (!e || !e.activeLabel) return;
     setRefAreaLeft(e.activeLabel);
-  };
+  }, []);
 
-  // Handle mouse move for zoom selection
-  const handleMouseMove = (e: any) => {
+  // Handle mouse move for zoom selection - debounced version
+  const handleMouseMove = useCallback((e: any) => {
     if (refAreaLeft && e && e.activeLabel) {
       setRefAreaRight(e.activeLabel);
     }
-  };
+  }, [refAreaLeft]);
 
   // Handle mouse up to complete zoom selection
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     if (refAreaLeft && refAreaRight) {
       // Ensure left is always less than right
       const [left, right] = refAreaLeft < refAreaRight 
@@ -93,22 +106,23 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
       setRefAreaLeft(null);
       setRefAreaRight(null);
       
-      toast.info("Zoomed to selected area. Use the Reset Zoom button to view all data.");
+      toast.info("Zoomed to selected area", {
+        duration: 2000
+      });
     }
-  };
+  }, [refAreaLeft, refAreaRight, handleZoomReset]);
 
   // Reset zoom
-  const handleZoomReset = () => {
+  const handleZoomReset = useCallback(() => {
     setZoomDomain(null);
     setIsZoomed(false);
     setRefAreaLeft(null);
     setRefAreaRight(null);
     if (onZoomReset) onZoomReset();
-    toast.info("Reset to full data view");
-  };
+  }, [onZoomReset]);
 
-  // Handle brush change
-  const handleBrushChange = (brushData: any) => {
+  // Handle brush change with debounce
+  const handleBrushChange = useCallback((brushData: any) => {
     if (!brushData || !onBrushChange) return;
     
     const { startIndex, endIndex } = brushData;
@@ -119,13 +133,13 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
       onBrushChange({
         startIndex,
         endIndex,
-        startValue: visibleChartData[startIndex]?.timestamp,
-        endValue: visibleChartData[endIndex]?.timestamp
+        startValue: sampledData[startIndex]?.timestamp,
+        endValue: sampledData[endIndex]?.timestamp
       });
     }
-  };
+  }, [sampledData, onBrushChange]);
 
-  if (!visibleChartData || visibleChartData.length === 0) {
+  if (!sampledData || sampledData.length === 0) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-card p-4 rounded-md border">
         <p className="text-muted-foreground">No data available to display</p>
@@ -140,12 +154,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
 
   // Component to render
   const ChartComponent = chartType === 'line' ? LineChart : BarChart;
-
-  // Sample data if there are too many points
-  const dataToRender = visibleChartData.length > 5000 
-    ? visibleChartData.filter((_, i) => i % Math.ceil(visibleChartData.length / 5000) === 0) 
-    : visibleChartData;
-
+  
   return (
     <div className="relative h-full">
       {isZoomed && (
@@ -164,7 +173,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
       
       <ResponsiveContainer width="100%" height="100%">
         <ChartComponent
-          data={dataToRender}
+          data={sampledData}
           margin={{ top: 20, right: 30, left: 10, bottom: 5 }}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -178,6 +187,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             type="number"
             scale="time"
             allowDataOverflow={isZoomed}
+            minTickGap={50}
           />
           <YAxis />
           <Tooltip content={<CustomTooltip />} />
@@ -192,8 +202,9 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
                 name={signal.name}
                 stroke={signal.color}
                 dot={false}
-                activeDot={{ r: 6 }}
+                activeDot={{ r: 4 }}
                 isAnimationActive={false}
+                strokeWidth={1.5}
               />
             ))
           ) : (
@@ -204,6 +215,7 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
                 name={signal.name}
                 fill={signal.color}
                 isAnimationActive={false}
+                fillOpacity={0.8}
               />
             ))
           )}
@@ -219,22 +231,24 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
             />
           )}
           
-          {/* Brush component for additional navigation */}
+          {/* Brush component for additional navigation - optimized with lower height */}
           <Brush 
             dataKey="timestamp" 
-            height={30} 
+            height={20} 
             stroke="#8884d8"
             onChange={handleBrushChange}
             tickFormatter={formatXAxis}
+            startIndex={0}
+            endIndex={Math.min(100, sampledData.length - 1)}
           />
         </ChartComponent>
       </ResponsiveContainer>
       
-      <div className="text-center text-xs text-muted-foreground mt-2">
-        <p>Select an area by clicking and dragging to zoom. Use Reset Zoom button to view all data.</p>
+      <div className="text-center text-xs text-muted-foreground mt-1">
+        <p>Drag to zoom. Double-click chart or use Reset button to reset view.</p>
       </div>
     </div>
   );
 };
 
-export default RechartsDisplay;
+export default React.memo(RechartsDisplay);
