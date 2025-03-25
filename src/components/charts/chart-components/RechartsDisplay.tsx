@@ -41,8 +41,8 @@ const RechartsDisplay: React.FC<ChartDisplayProps> = ({
   chartType,
   visibleChartData,
   signals,
-  zoomMode,
-  zoomRange,
+  zoomMode = 'all',
+  zoomRange = { start: null, end: null },
   onBrushChange
 }) => {
   // Sample data to reduce the number of points displayed for better performance

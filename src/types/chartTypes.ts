@@ -77,6 +77,8 @@ export interface ChartDisplayProps {
   signals: Signal[];
   onZoomDomainChange?: (domain: any) => void;
   onBrushChange?: (brushData: any) => void;
+  zoomMode?: 'all' | 'custom';
+  zoomRange?: { start: number | null; end: number | null };
 }
 
 export interface LogSampleProps {

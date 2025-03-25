@@ -42,7 +42,7 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
 
   // Track chart container dimensions
   useEffect(() => {
-    if (containerRef.current) {
+    if (containerRef && containerRef.current) {
       const resizeObserver = new ResizeObserver(entries => {
         for (let entry of entries) {
           setChartWidth(entry.contentRect.width);
@@ -121,8 +121,8 @@ const ChartDisplay: React.FC<ChartDisplayProps> = ({
   }
 
   // Set domain values for zoom - default to showing all data
-  const domainStart = zoomMode === 'custom' && zoomRange.start ? zoomRange.start : 'dataMin';
-  const domainEnd = zoomMode === 'custom' && zoomRange.end ? zoomRange.end : 'dataMax';
+  const domainStart = zoomMode === 'custom' && zoomRange && zoomRange.start ? zoomRange.start : 'dataMin';
+  const domainEnd = zoomMode === 'custom' && zoomRange && zoomRange.end ? zoomRange.end : 'dataMax';
 
   return (
     <div className="bg-card border rounded-md p-3 h-[300px]" ref={containerRef}>
