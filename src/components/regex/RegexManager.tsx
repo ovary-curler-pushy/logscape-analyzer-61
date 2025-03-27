@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from "react";
 import { toast } from "sonner";
 import { PlusCircle, Save, Trash2, Check, X, Edit, Play, Info, RefreshCw } from "lucide-react";
@@ -14,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import PatternForm from "./PatternForm";
+import PatternImportExport from "./PatternImportExport";
 import { 
   savePatterns, 
   loadPatterns, 
@@ -201,6 +203,22 @@ const RegexManager: React.FC<RegexManagerProps> = ({ onApplyPattern, logSample }
     }
   };
 
+  const handleImportPatterns = (importedPatterns: RegexPattern[]) => {
+    // Merge imported patterns with existing ones, avoiding duplicates by name
+    const existingNames = new Set(patterns.map(p => p.name));
+    const newPatterns = importedPatterns.filter(p => !existingNames.has(p.name));
+    const updatedPatterns = [...patterns, ...newPatterns];
+    
+    setPatterns(updatedPatterns);
+    
+    // Also save to shared storage
+    savePatterns(updatedPatterns)
+      .catch(error => {
+        console.error("Error saving imported patterns:", error);
+        toast.error("Patterns were imported but could not be saved persistently");
+      });
+  };
+
   return (
     <Card className="shadow-sm border-border/50">
       <CardHeader className="pb-3">
@@ -221,6 +239,11 @@ const RegexManager: React.FC<RegexManagerProps> = ({ onApplyPattern, logSample }
               <RefreshCw className={`h-4 w-4 ${isCheckingForUpdates ? 'animate-spin' : ''}`} />
               <span>Sync</span>
             </Button>
+            
+            <PatternImportExport 
+              patterns={patterns}
+              onImport={handleImportPatterns}
+            />
             
             <Dialog open={newPatternOpen} onOpenChange={setNewPatternOpen}>
               <DialogTrigger asChild>

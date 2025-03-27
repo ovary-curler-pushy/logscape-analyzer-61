@@ -1,7 +1,7 @@
 
 import React, { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
-import { FileText, Wand, RefreshCcw, Users } from "lucide-react";
+import { FileText, Wand, RefreshCcw } from "lucide-react";
 import AppLayout from "@/components/layout/AppLayout";
 import FileUploader from "@/components/upload/FileUploader";
 import RegexManager, { RegexPattern } from "@/components/regex/RegexManager";
@@ -9,14 +9,12 @@ import LogChart from "@/components/charts/LogChart";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 
 const Index = () => {
   const [logContent, setLogContent] = useState<string>("");
   const [selectedPatterns, setSelectedPatterns] = useState<RegexPattern[]>([]);
   const [activeTab, setActiveTab] = useState<string>("upload");
   const [isLoaded, setIsLoaded] = useState(false);
-  const [showSharedAlert, setShowSharedAlert] = useState(true);
 
   // Mark component as loaded after initial render
   useEffect(() => {
@@ -75,23 +73,6 @@ const Index = () => {
           </Button>
         </div>
       </div>
-
-      {showSharedAlert && (
-        <Alert className="mb-8 max-w-3xl mx-auto">
-          <Users className="h-4 w-4" />
-          <AlertTitle>New Shared Patterns Feature</AlertTitle>
-          <AlertDescription className="flex justify-between items-center">
-            <span>All regex patterns are now shared between users for better collaboration.</span>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={() => setShowSharedAlert(false)}
-            >
-              Dismiss
-            </Button>
-          </AlertDescription>
-        </Alert>
-      )}
 
       <Tabs defaultValue="upload" value={activeTab} onValueChange={setActiveTab} className="space-y-8">
         <div className="flex justify-center">

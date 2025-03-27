@@ -36,6 +36,14 @@ const generateId = (): string => {
 // Save patterns to IndexedDB and localStorage for sharing across users
 export const savePatterns = async (patterns: RegexPattern[]): Promise<void> => {
   try {
+    // Ensure all patterns have IDs
+    const validPatterns = patterns.map(pattern => {
+      if (!pattern.id) {
+        return { ...pattern, id: generateId() };
+      }
+      return pattern;
+    });
+
     // First, save to IndexedDB (local user storage)
     const db = await openDB();
     const transaction = db.transaction(STORE_NAME, 'readwrite');
@@ -45,15 +53,12 @@ export const savePatterns = async (patterns: RegexPattern[]): Promise<void> => {
     store.clear();
     
     // Add each pattern
-    for (const pattern of patterns) {
+    for (const pattern of validPatterns) {
       store.add(pattern);
     }
     
     // Now save to localStorage for sharing across users
-    localStorage.setItem(SHARED_PATTERNS_KEY, JSON.stringify(patterns));
-
-    // If in a production environment, you would typically call an API here
-    // to store the patterns in a shared database instead of localStorage
+    localStorage.setItem(SHARED_PATTERNS_KEY, JSON.stringify(validPatterns));
     
     return new Promise((resolve, reject) => {
       transaction.oncomplete = () => {
@@ -219,5 +224,59 @@ export const checkForSharedPatternUpdates = async (): Promise<boolean> => {
   } catch (error) {
     console.error('Error checking for pattern updates:', error);
     return false;
+  }
+};
+
+// Export patterns as a formatted string
+export const exportPatterns = (patterns: RegexPattern[]): string => {
+  // Create a simplified representation without IDs for export
+  const exportData = patterns.map(({ name, pattern, description }) => ({
+    name,
+    pattern,
+    description: description || ''
+  }));
+  
+  return JSON.stringify(exportData, null, 2);
+};
+
+// Import patterns from a formatted string
+export const importPatterns = (importString: string): RegexPattern[] => {
+  try {
+    const importData = JSON.parse(importString);
+    
+    if (!Array.isArray(importData)) {
+      throw new Error('Invalid import format: expected an array');
+    }
+    
+    // Validate and convert the imported data to RegexPattern objects
+    const patterns: RegexPattern[] = importData.map((item) => {
+      // Validate required fields
+      if (!item.name || typeof item.name !== 'string') {
+        throw new Error('Invalid pattern: missing or invalid name');
+      }
+      
+      if (!item.pattern || typeof item.pattern !== 'string') {
+        throw new Error('Invalid pattern: missing or invalid regex pattern');
+      }
+      
+      // Test if the pattern is a valid regex
+      try {
+        new RegExp(item.pattern);
+      } catch (e) {
+        throw new Error(`Invalid regex pattern "${item.pattern}": ${e}`);
+      }
+      
+      // Create a new pattern with a generated ID
+      return {
+        id: generateId(),
+        name: item.name,
+        pattern: item.pattern,
+        description: item.description || undefined
+      };
+    });
+    
+    return patterns;
+  } catch (error) {
+    throw new Error(`Failed to import patterns: ${error instanceof Error ? error.message : String(error)}`);
   }
 };
