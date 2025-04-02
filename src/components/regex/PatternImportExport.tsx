@@ -13,14 +13,9 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 interface PatternImportExportProps {
   patterns: RegexPattern[];
   onImport: (patterns: RegexPattern[]) => void;
-  userId?: string; // Add userId prop
 }
 
-const PatternImportExport: React.FC<PatternImportExportProps> = ({ 
-  patterns, 
-  onImport,
-  userId 
-}) => {
+const PatternImportExport: React.FC<PatternImportExportProps> = ({ patterns, onImport }) => {
   const [open, setOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<string>("export");
   const [importText, setImportText] = useState("");
