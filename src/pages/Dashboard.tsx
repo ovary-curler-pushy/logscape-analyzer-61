@@ -10,8 +10,14 @@ import { useEffect, useState } from "react";
 import { RegexPattern } from "@/components/regex/RegexManager";
 import { getUserPatterns, saveUserPatterns } from "@/utils/userPatterns";
 
+// Check if Clerk is available
+const isClerkAvailable = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
 const Dashboard = () => {
-  const { user } = useUser();
+  // Only use Clerk conditionally
+  const clerkUser = isClerkAvailable ? useUser() : { user: null, isLoaded: true };
+  const { user } = clerkUser;
+  
   const [patterns, setPatterns] = useState<RegexPattern[]>([]);
   
   useEffect(() => {
@@ -21,14 +27,19 @@ const Dashboard = () => {
       if (userPatterns && userPatterns.length > 0) {
         setPatterns(userPatterns);
       }
+    } else if (!isClerkAvailable) {
+      // For anonymous mode, use a generic ID
+      const anonymousPatterns = getUserPatterns('anonymous-user');
+      if (anonymousPatterns && anonymousPatterns.length > 0) {
+        setPatterns(anonymousPatterns);
+      }
     }
   }, [user?.id]);
 
   const handlePatternsChange = (newPatterns: RegexPattern[]) => {
     setPatterns(newPatterns);
-    if (user?.id) {
-      saveUserPatterns(user.id, newPatterns);
-    }
+    const userId = user?.id || 'anonymous-user';
+    saveUserPatterns(userId, newPatterns);
   };
   
   return (
@@ -45,13 +56,22 @@ const Dashboard = () => {
                 Home
               </Link>
             </Button>
-            <Button variant="ghost" size="sm" asChild>
-              <Link to="/profile">
-                <Settings className="mr-2 h-4 w-4" />
-                Profile
-              </Link>
-            </Button>
-            <UserButton afterSignOutUrl="/" />
+            {isClerkAvailable && user && (
+              <>
+                <Button variant="ghost" size="sm" asChild>
+                  <Link to="/profile">
+                    <Settings className="mr-2 h-4 w-4" />
+                    Profile
+                  </Link>
+                </Button>
+                <UserButton afterSignOutUrl="/" />
+              </>
+            )}
+            {!isClerkAvailable && (
+              <span className="text-xs px-2 py-1 bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-200 rounded-full">
+                Anonymous Mode
+              </span>
+            )}
           </div>
         </div>
       </header>
@@ -59,42 +79,46 @@ const Dashboard = () => {
       <main className="container py-6 px-4">
         <div className="grid gap-6">
           <div className="flex justify-between items-center">
-            <h2 className="text-2xl font-bold">Welcome, {user?.firstName || 'User'}</h2>
+            <h2 className="text-2xl font-bold">
+              {user?.firstName ? `Welcome, ${user.firstName}` : 'Regex Analysis Tool'}
+            </h2>
           </div>
           
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            <Card>
-              <CardHeader>
-                <CardTitle>My Regex Patterns</CardTitle>
-                <CardDescription>
-                  Manage and use your regex patterns
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button asChild variant="outline" className="w-full">
-                  <Link to="/">
-                    <FileText className="mr-2 h-4 w-4" />
-                    Open Editor
-                  </Link>
-                </Button>
-              </CardContent>
-            </Card>
-            
-            <Card>
-              <CardHeader>
-                <CardTitle>Share Analysis</CardTitle>
-                <CardDescription>
-                  Share your regex analysis with others
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <Button variant="outline" className="w-full">
-                  <Share2 className="mr-2 h-4 w-4" />
-                  Share Current Analysis
-                </Button>
-              </CardContent>
-            </Card>
-          </div>
+          {isClerkAvailable && user && (
+            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+              <Card>
+                <CardHeader>
+                  <CardTitle>My Regex Patterns</CardTitle>
+                  <CardDescription>
+                    Manage and use your regex patterns
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button asChild variant="outline" className="w-full">
+                    <Link to="/">
+                      <FileText className="mr-2 h-4 w-4" />
+                      Open Editor
+                    </Link>
+                  </Button>
+                </CardContent>
+              </Card>
+              
+              <Card>
+                <CardHeader>
+                  <CardTitle>Share Analysis</CardTitle>
+                  <CardDescription>
+                    Share your regex analysis with others
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <Button variant="outline" className="w-full">
+                    <Share2 className="mr-2 h-4 w-4" />
+                    Share Current Analysis
+                  </Button>
+                </CardContent>
+              </Card>
+            </div>
+          )}
           
           <Card>
             <CardHeader>
@@ -102,12 +126,17 @@ const Dashboard = () => {
               <CardDescription>
                 Create and manage your regex patterns
               </CardDescription>
+              {!isClerkAvailable && (
+                <div className="mt-2 text-sm text-amber-600 dark:text-amber-400">
+                  Note: In anonymous mode, patterns are saved to your browser's local storage.
+                </div>
+              )}
             </CardHeader>
             <CardContent>
               <RegexManager 
                 initialPatterns={patterns} 
                 onPatternsChange={handlePatternsChange}
-                userId={user?.id || ''}
+                userId={user?.id || 'anonymous-user'}
               />
             </CardContent>
           </Card>

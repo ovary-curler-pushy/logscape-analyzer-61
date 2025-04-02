@@ -77,6 +77,11 @@ export default function Index() {
             <p className="mt-2 text-sm text-muted-foreground">
               Note: Authentication is not available in development mode.
             </p>
+            <div className="mt-4 flex justify-center gap-4">
+              <Button asChild size="lg">
+                <Link to="/dashboard">Use Anonymous Mode</Link>
+              </Button>
+            </div>
           </div>
         )}
       </div>

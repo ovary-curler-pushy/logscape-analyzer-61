@@ -54,6 +54,8 @@ const App = () => (
           // Render app without authentication when Clerk is not available
           <Routes>
             <Route path="/" element={<Index />} />
+            {/* Make dashboard accessible in non-auth mode */}
+            <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/shared/:userId/:analysisId" element={<SharedAnalysis />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
