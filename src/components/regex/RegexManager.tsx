@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { Trash, Copy, Edit, Share2, Plus } from "lucide-react";
@@ -88,7 +87,12 @@ const RegexManager: React.FC<RegexManagerProps> = ({
     if (isEditing && selectedPattern) {
       handleUpdatePattern({ ...selectedPattern, ...values });
     } else {
-      handleAddPattern(values);
+      const newPattern: RegexPattern = {
+        name: values.name,
+        pattern: values.pattern,
+        description: values.description
+      };
+      handleAddPattern(newPattern);
     }
     patternForm.reset();
   }
@@ -129,14 +133,12 @@ const RegexManager: React.FC<RegexManagerProps> = ({
     highlightMatches();
   }, [highlightMatches]);
 
-  // Update the patterns list when initialPatterns changes
   useEffect(() => {
     if (initialPatterns && initialPatterns.length > 0) {
       setPatterns(initialPatterns);
     }
   }, [initialPatterns]);
 
-  // Call the onPatternsChange prop when patterns change
   useEffect(() => {
     if (onPatternsChange) {
       onPatternsChange(patterns);
@@ -194,7 +196,6 @@ const RegexManager: React.FC<RegexManagerProps> = ({
     setPatterns([...patterns, ...newPatterns]);
   };
 
-  // Update handleSharePattern to use the new sharing functionality
   const handleSharePattern = (pattern: RegexPattern) => {
     if (!userId) {
       toast.error("You must be logged in to share patterns");
@@ -442,7 +443,12 @@ const AddPatternForm: React.FC<AddPatternFormProps> = ({ onAddPattern, setOpen }
   });
 
   function onSubmit(values: PatternFormValues) {
-    onAddPattern(values);
+    const newPattern: RegexPattern = {
+      name: values.name,
+      pattern: values.pattern,
+      description: values.description
+    };
+    onAddPattern(newPattern);
     form.reset();
     setOpen(false);
   }
