@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useEffect } from "react";
 import { toast } from "sonner";
 import { Trash, Copy, Edit, Share2, Plus } from "lucide-react";
@@ -39,6 +40,7 @@ import { exportPatterns, importPatterns } from "@/utils/patternStorage";
 import PatternImportExport from "@/components/regex/PatternImportExport";
 
 export interface RegexPattern {
+  id?: string;  // Added id as optional
   name: string;
   pattern: string;
   description?: string;
