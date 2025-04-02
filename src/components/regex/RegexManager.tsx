@@ -39,7 +39,6 @@ import { exportPatterns, importPatterns } from "@/utils/patternStorage";
 import PatternImportExport from "@/components/regex/PatternImportExport";
 
 export interface RegexPattern {
-  id?: string;  // Added id as optional
   name: string;
   pattern: string;
   description?: string;
@@ -87,12 +86,7 @@ const RegexManager: React.FC<RegexManagerProps> = ({
     if (isEditing && selectedPattern) {
       handleUpdatePattern({ ...selectedPattern, ...values });
     } else {
-      const newPattern: RegexPattern = {
-        name: values.name,
-        pattern: values.pattern,
-        description: values.description
-      };
-      handleAddPattern(newPattern);
+      handleAddPattern(values);
     }
     patternForm.reset();
   }
@@ -133,12 +127,14 @@ const RegexManager: React.FC<RegexManagerProps> = ({
     highlightMatches();
   }, [highlightMatches]);
 
+  // Update the patterns list when initialPatterns changes
   useEffect(() => {
     if (initialPatterns && initialPatterns.length > 0) {
       setPatterns(initialPatterns);
     }
   }, [initialPatterns]);
 
+  // Call the onPatternsChange prop when patterns change
   useEffect(() => {
     if (onPatternsChange) {
       onPatternsChange(patterns);
@@ -196,6 +192,7 @@ const RegexManager: React.FC<RegexManagerProps> = ({
     setPatterns([...patterns, ...newPatterns]);
   };
 
+  // Update handleSharePattern to use the new sharing functionality
   const handleSharePattern = (pattern: RegexPattern) => {
     if (!userId) {
       toast.error("You must be logged in to share patterns");
@@ -443,12 +440,7 @@ const AddPatternForm: React.FC<AddPatternFormProps> = ({ onAddPattern, setOpen }
   });
 
   function onSubmit(values: PatternFormValues) {
-    const newPattern: RegexPattern = {
-      name: values.name,
-      pattern: values.pattern,
-      description: values.description
-    };
-    onAddPattern(newPattern);
+    onAddPattern(values);
     form.reset();
     setOpen(false);
   }
