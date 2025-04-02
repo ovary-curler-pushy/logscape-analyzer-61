@@ -22,6 +22,7 @@ if (!PUBLISHABLE_KEY) {
     <React.StrictMode>
       <ClerkProvider
         publishableKey={PUBLISHABLE_KEY}
+        clerkJSVersion="5.56.0-snapshot.v20250312225817"
         signInUrl="/sign-in"
         signUpUrl="/sign-up"
         signInFallbackRedirectUrl="/dashboard"
